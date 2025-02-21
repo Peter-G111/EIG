@@ -13,13 +13,11 @@
 #     name: julia-1.10
 # ---
 
-# + [markdown] jp-MarkdownHeadingCollapsed=true
 # ### Aim
 # A notebook that solves Escape Interdiction Games (EIG) according to the methods described in the original paper by Zhang et al., as well as using the methods in the intermediate report.
 # Both processes rely on an LP **CoreLP** which finds an optimal mixed strategy given a (small) subset of available strategies for both players.
 # After finding optimal mixed strategies, we use defender and attacker oracles to find a response to the most recent optimal mixed strategy of the opposition, then add the support of the response to the set of available strategies.
 # We iterate until no new improving strategies can be found in consulting the oracles.
-# -
 
 # ### Data & Generating EIG Instances
 # An EIG requires a directed network structure to model a city's road network.
@@ -39,7 +37,7 @@
 # using Distributions
 using JuMP
 using Gurobi
-# using Plots
+using Plots
 using DataStructures  # binary heap for Dijkstra's Algorithm, default dictionary
 # using Formatting
 using CSV  # for CSV reading (input)
@@ -537,6 +535,323 @@ function makedefstrat_endnodes(eig)
     return makedefstrat_path(eig, end_nodes)
 end
 
+# #### Visualisation
+
+function drawEIGgraph(eig::EIG; arrow_size=0.03, arrow_os=0.2, width)
+    my_plot = plot(;aspect_ratio=:equal)  # init plot with nothing
+        
+    # plot edges
+    for edge in eig.network.edges
+        
+        if edge.b == eig.network.v_∞
+            continue  # don't plot v_∞ node
+        end
+        
+        # convert int to pair representation for nodes
+        xa, ya = node_int_to_pair(edge.a, width)
+        xb, yb = node_int_to_pair(edge.b, width)
+        
+        xs = [xa, xb]
+        ys = [ya, yb]
+        
+        plot!(xs, ys; line=(1, :black, :solid), marker=(:circle, :black, 1), label="")
+        
+        # draw directed arrowheads
+        if ya == yb
+            # horizontal edge
+            if xa < xb
+                # arrow pointing right
+                plot!([xa + arrow_os - arrow_size, xa + arrow_os], [ya + arrow_size, ya]; line=(1, :black, :solid), label="")
+                plot!([xa + arrow_os - arrow_size, xa + arrow_os], [ya - arrow_size, ya]; line=(1, :black, :solid), label="")
+                
+            else
+                # arrow pointing left
+                plot!([xa - arrow_os + arrow_size, xa - arrow_os], [ya + arrow_size, ya]; line=(1, :black, :solid), label="")
+                plot!([xa - arrow_os + arrow_size, xa - arrow_os], [ya - arrow_size, ya]; line=(1, :black, :solid), label="")
+            end
+        elseif xa == xb
+            # vertical edge
+            if ya < yb
+                # arrow pointing up
+                plot!([xa - arrow_size, xa], [ya + arrow_os - arrow_size, ya + arrow_os]; line=(1, :black, :solid), label="")
+                plot!([xa + arrow_size, xa], [ya + arrow_os - arrow_size, ya + arrow_os]; line=(1, :black, :solid), label="")
+            else
+                # arrow pointing down
+                plot!([xa - arrow_size, xa], [ya - arrow_os + arrow_size, ya - arrow_os]; line=(1, :black, :solid), label="")
+                plot!([xa + arrow_size, xa], [ya - arrow_os + arrow_size, ya - arrow_os]; line=(1, :black, :solid), label="")
+            end
+        else
+            # diagonal edge
+            if xa < xb
+                if ya < yb
+                    # point up-right
+                    plot!([xa + arrow_os - arrow_size, xa + arrow_os], [ya + arrow_os, ya + arrow_os]; line=(1, :black, :solid), label="")
+                    plot!([xa + arrow_os, xa + arrow_os], [ya + arrow_os - arrow_size, ya + arrow_os]; line=(1, :black, :solid), label="")
+                else
+                    # point down-right
+                    plot!([xa + arrow_os - arrow_size, xa + arrow_os], [ya - arrow_os, ya - arrow_os]; line=(1, :black, :solid), label="")
+                    plot!([xa + arrow_os, xa + arrow_os], [ya - arrow_os + arrow_size, ya - arrow_os]; line=(1, :black, :solid), label="")
+                    
+                end
+            else
+                if ya < yb
+                    # point up-left
+                    plot!([xa - arrow_os + arrow_size, xa - arrow_os], [ya + arrow_os, ya + arrow_os]; line=(1, :black, :solid), label="")
+                    plot!([xa - arrow_os, xa - arrow_os], [ya + arrow_os - arrow_size, ya + arrow_os]; line=(1, :black, :solid), label="")
+                else
+                    # point down-left
+                    plot!([xa - arrow_os + arrow_size, xa - arrow_os], [ya - arrow_os, ya - arrow_os]; line=(1, :black, :solid), label="")
+                    plot!([xa - arrow_os, xa - arrow_os], [ya - arrow_os + arrow_size, ya - arrow_os]; line=(1, :black, :solid), label="")
+                end
+            end
+        end
+    end
+    
+    # plot exit nodes (nodes having an arc towards v_∞)
+    for exit_node in eig.network.exit_nodes
+        pair_repr = node_int_to_pair(exit_node, width)
+        plot!(pair_repr; marker=(:circle, :blue, 6), label="")
+    end
+    
+    # plot attacker start node
+    plot!(node_int_to_pair(eig.network.v_0, width); marker=(:circle, :red, 4), label="")
+    
+    # plot defender start nodes
+    for v_0r in eig.network.v_0r
+        pair_repr = node_int_to_pair(v_0r, width)
+        plot!(pair_repr; marker=(:circle, :lightgreen, 4), label="")
+    end
+    
+    display(my_plot)
+end
+
+# +
+function animateEIGPure(eig::EIG, att_strat, def_strat; arrow_size=0.03, arrow_os=0.2, anim_time=3, fps=30, savefilename="EIG_GIF_EXAMPLE", width)
+    
+    num_frames = ceil(Int, anim_time * fps)
+    
+    curr_att_num = 1  # attacker state numbers
+    curr_def_nums = fill(1, size(def_strat)[1])  # resource state numbers
+    
+    MAX_TIME = eig.t_max  # maximum 'interesting' time in EIG to animate to; choose such that the attacker has entered an exit-node + 1
+    for state in att_strat
+        if state.v in eig.network.exit_nodes
+            MAX_TIME = state.t + 1 # attacker will trivially escape 
+            break;
+        end
+    end
+    
+    
+    # precompute resource paths
+    res_all_paths = [[] for _ in 1:length(def_strat)]  # ith entry is a list of paths, one for each transition between resource states
+    for (j, res) in enumerate(def_strat)
+        # compute paths for this resource res
+        res_paths = []
+
+        for (state_num, state) in enumerate(res[1:end-1])
+            # find path from state_num to state_num+1
+            path = shortest_path(eig, state.v, res[state_num+1].v, scale_divisor=eig.speed_D)
+            push!(res_paths, path)
+        end
+        res_all_paths[j] = res_paths
+    end
+    
+    anim = @animate for i = 1:num_frames
+        # first determine time t elapsed for EIG as a function of i
+        eig_time = i / num_frames * MAX_TIME
+        
+        title_str = string(round(eig_time))
+        
+        plot(;aspect_ratio=:equal, title = "t = $title_str", showaxis = false)  # init plot with nothing; also display EIG-time as title
+        
+        # plot edges
+        for edge in eig.network.edges
+
+            if edge.b == eig.network.v_∞
+                continue  # don't plot v_∞ node
+            end
+
+            # convert int to pair representation for nodes
+            xa, ya = node_int_to_pair(edge.a, width)
+            xb, yb = node_int_to_pair(edge.b, width)
+
+            xs = [xa, xb]
+            ys = [ya, yb]
+
+            plot!(xs, ys; line=(1, :black, :solid), marker=(:circle, :black, 1), label="")
+
+            # draw directed arrowheads
+            if ya == yb
+                # horizontal edge
+                if xa < xb
+                    # arrow pointing right
+                    plot!([xa + arrow_os - arrow_size, xa + arrow_os], [ya + arrow_size, ya]; line=(1, :black, :solid), label="")
+                    plot!([xa + arrow_os - arrow_size, xa + arrow_os], [ya - arrow_size, ya]; line=(1, :black, :solid), label="")
+
+                else
+                    # arrow pointing left
+                    plot!([xa - arrow_os + arrow_size, xa - arrow_os], [ya + arrow_size, ya]; line=(1, :black, :solid), label="")
+                    plot!([xa - arrow_os + arrow_size, xa - arrow_os], [ya - arrow_size, ya]; line=(1, :black, :solid), label="")
+                end
+            elseif xa == xb
+                # vertical edge
+                if ya < yb
+                    # arrow pointing up
+                    plot!([xa - arrow_size, xa], [ya + arrow_os - arrow_size, ya + arrow_os]; line=(1, :black, :solid), label="")
+                    plot!([xa + arrow_size, xa], [ya + arrow_os - arrow_size, ya + arrow_os]; line=(1, :black, :solid), label="")
+                else
+                    # arrow pointing down
+                    plot!([xa - arrow_size, xa], [ya - arrow_os + arrow_size, ya - arrow_os]; line=(1, :black, :solid), label="")
+                    plot!([xa + arrow_size, xa], [ya - arrow_os + arrow_size, ya - arrow_os]; line=(1, :black, :solid), label="")
+                end
+            else
+                # diagonal edge
+                if xa < xb
+                    if ya < yb
+                        # point up-right
+                        plot!([xa + arrow_os - arrow_size, xa + arrow_os], [ya + arrow_os, ya + arrow_os]; line=(1, :black, :solid), label="")
+                        plot!([xa + arrow_os, xa + arrow_os], [ya + arrow_os - arrow_size, ya + arrow_os]; line=(1, :black, :solid), label="")
+                    else
+                        # point down-right
+                        plot!([xa + arrow_os - arrow_size, xa + arrow_os], [ya - arrow_os, ya - arrow_os]; line=(1, :black, :solid), label="")
+                        plot!([xa + arrow_os, xa + arrow_os], [ya - arrow_os + arrow_size, ya - arrow_os]; line=(1, :black, :solid), label="")
+
+                    end
+                else
+                    if ya < yb
+                        # point up-left
+                        plot!([xa - arrow_os + arrow_size, xa - arrow_os], [ya + arrow_os, ya + arrow_os]; line=(1, :black, :solid), label="")
+                        plot!([xa - arrow_os, xa - arrow_os], [ya + arrow_os - arrow_size, ya + arrow_os]; line=(1, :black, :solid), label="")
+                    else
+                        # point down-left
+                        plot!([xa - arrow_os + arrow_size, xa - arrow_os], [ya - arrow_os, ya - arrow_os]; line=(1, :black, :solid), label="")
+                        plot!([xa - arrow_os, xa - arrow_os], [ya - arrow_os + arrow_size, ya - arrow_os]; line=(1, :black, :solid), label="")
+                    end
+                end
+            end
+        end
+
+        # plot exit nodes (nodes having an arc towards v_∞)
+        for exit_node in eig.network.exit_nodes
+            pair_repr = node_int_to_pair(exit_node, width)
+            plot!(pair_repr; marker=(:circle, :blue, 6), label="")
+        end
+        
+        # plot attacker and defenders
+        
+        # println("eig_time= $eig_time") 
+        
+        # check if attacker has arrived at next node yet
+        while curr_att_num < size(att_strat)[1] && eig_time ≥ att_strat[curr_att_num + 1].t
+            # attacker state has changed; update it
+            curr_att_num += 1
+        end
+        
+        # if !(att_strat[curr_att_num].v in eig.network.exit_nodes)  # attacker hasn't reached end node
+        
+        if curr_att_num < size(att_strat)[1] - 1  # attacker hasn't reached an exit node (a 2nd last state must be an exit node)
+            # plot attacker point; find vector from current node to next node, and scale by time
+            t = (eig_time - att_strat[curr_att_num].t) / (att_strat[curr_att_num + 1].t - att_strat[curr_att_num].t)
+            node_a = node_int_to_pair(att_strat[curr_att_num].v, width)
+            node_b = node_int_to_pair(att_strat[curr_att_num + 1].v, width)
+
+            point_to_plot = ((1 - t) .* node_a) .+ (t .* node_b)
+
+            # display(point_to_plot)
+
+            plot!(point_to_plot; marker=(:circle, :red, 4), label="")
+        else
+            # println("curr_att_num= $curr_att_num")
+        end
+
+        # plot defender nodes
+        
+        for (j, res) in enumerate(def_strat)
+            # check if defender resource has left the current node
+            while curr_def_nums[j] < size(res)[1] && eig_time > res[curr_def_nums[j]].t_b
+                # update resource state
+                curr_def_nums[j] += 1
+            end
+            
+            # check if resource is in transit, or at a node
+            
+            if res[curr_def_nums[j]].t_a ≤ eig_time ≤ res[curr_def_nums[j]].t_b
+                # plot stationary resource at node
+                pair_repr = node_int_to_pair(res[curr_def_nums[j]].v, width)
+                plot!(pair_repr; marker=(:circle, :lightgreen, 4), label="")
+            else
+                # TODO, in transit to next node (which may not be a neighbourhood node)
+                
+                # find shortest path from current resource node to next node (currently inefficient - multiple calls for the same )
+                
+                # display(res_all_paths)
+                # display(curr_def_nums)
+                # display(j)
+                
+                res_paths = res_all_paths[j]  # all paths of resource (kth entry is path from state k to k+1)
+                
+                path = res_paths[curr_def_nums[j] - 1]  # current path in transit
+                
+                # find neighbouring nodes in path such that time in path
+                # [(v_0, 0), (v_1, 5), (v_2, 7), (v_3, 10)]
+                
+                # display(path)
+                # display(res[curr_def_nums[j] - 1])
+                
+                edge_start = nothing
+                edge_end = nothing  # node of the end of the edge currently being traversed
+                time_start = 0
+                time_end = eig.t_max
+                for idx in 1:length(path)
+                    if path[idx].t > eig_time - res[curr_def_nums[j] - 1].t_b
+                        # found edge to traverse
+                        
+                        # println("Found idx=", idx, " path[idx].t = ", path[idx].t, " eig_time - res[curr_def_nums[j] - 1].t_b = ", eig_time - res[curr_def_nums[j] - 1].t_b)
+                        # println("eig_time = ", eig_time)
+                        
+                        edge_start = path[idx - 1].v
+                        edge_end = path[idx].v
+                        
+                        time_start = res[curr_def_nums[j] - 1].t_b + path[idx - 1].t  # eig time corresponding to resource being precisely at edge_start
+                        time_end = res[curr_def_nums[j] - 1].t_b + path[idx].t
+                        # println("time_start=$time_start, time_end=$time_end")
+                        break;
+                    end
+                end
+                
+                # plot defender point; find vector from current node to next node, and scale by t (LERP)
+                t = (time_end - eig_time) / (time_end - time_start)
+                
+                if t > 1
+                    println("!!!!!!!!!!!!! t = $t")
+                end
+                
+                # display(t)
+                
+                node_b = node_int_to_pair(edge_start, width)  # !! swapped b with a, but it seems to fix the 'reverse' bug
+                node_a = node_int_to_pair(edge_end, width)
+
+                point_to_plot = ((1 - t) .* node_a) .+ (t .* node_b)
+
+                # display(point_to_plot)
+
+                plot!(point_to_plot; marker=(:circle, :green, 4), label="")
+            end
+        end
+        
+        
+#         for v_0r in eig.network.v_0r
+#             pair_repr = node_int_to_pair(v_0r, width)
+#             plot!(pair_repr; marker=(:circle, :lightgreen, 4), label="")
+#         end
+    end
+    
+    gif(anim, savefilename * ".gif", fps=fps)
+    
+    # display(my_plot)
+end
+# -
+
 # #### Interdiction Check & CoreLP
 
 # +
@@ -725,7 +1040,7 @@ end
 # #### Zhang et al. Double Oracle
 
 function EIGSzhang!(eig::EIG, att_strats, def_strats; L_max=5, DO=defenderoraclezhang, AO=attackeroraclezhang, max_iters=Inf, printing=1, total_timeout=300, A_timeout=60.0, D_timeout=60.0, silent_solvers=false)
-    """
+    """ TODO: bounds given by oracles - actually, just giving the data of the oracle objectives every run is enough (we can compute bounds easily from this data)
     Implements algorithm 1 in the Zhang paper (the main double oracle).
     Given initial attacker and defender strategies, generates new pure strategies until no improving strategies are found
     
@@ -751,38 +1066,45 @@ function EIGSzhang!(eig::EIG, att_strats, def_strats; L_max=5, DO=defenderoracle
     DO_time_over_time = []  # time taken to run the DO in each iteration
     AO_time_over_time = []
     coreLP_time_over_time = []
+
+    AO_network_nodes_over_time = []  # number of nodes in the attacker oracle graph constructed (support-based construction)
+    AO_network_edges_over_time = []  # number of arcs in the attacker oracle graph constructed (support-based construction)
+    DO_network_nodes_over_time = []  # number of nodes in the defender oracle graph constructed (support-based construction)
+    DO_network_edges_over_time = []  # number of arcs in the defender oracle graph constructed (support-based construction)
     
     iter_counter = 1
 
     # construct graphs if using network oracles
     if AO == attackeroraclenew
-        if printing ≥ 1
-            println("Constructing attacker oracle graph")
-            flush(stdout)
-        end
-        time_graph_att_constr = @elapsed new_graph_att = constructattackeroraclegraph(eig)
-        if printing ≥ 1
-            println("Finished attacker oracle graph")
-            flush(stdout)
-        end
+        # if printing ≥ 1
+        #     println("Constructing attacker oracle graph")
+        #     flush(stdout)
+        # end
+        # time_graph_att_constr = @elapsed new_graph_att = constructattackeroraclegraph(eig)
+        # if printing ≥ 1
+        #     println("Finished attacker oracle graph")
+        #     flush(stdout)
+        # end
+        time_graph_att_constr = []
     else
         time_graph_att_constr = nothing  # for consistent returning purposes
-        new_graph_att = nothing
+        # new_graph_att = nothing
     end
 
     if DO == defenderoraclenew
-        if printing ≥ 1
-            println("Constructing defender oracle graph")
-            flush(stdout)
-        end
-        time_graph_def_constr = @elapsed new_graph_def = constructdefenderoraclegraph(eig)
-        if printing ≥ 1
-            println("Finished defender oracle graph")
-            flush(stdout)
-        end
+        # if printing ≥ 1
+        #     println("Constructing defender oracle graph")
+        #     flush(stdout)
+        # end
+        # time_graph_def_constr = @elapsed new_graph_def = constructdefenderoraclegraph(eig)
+        # if printing ≥ 1
+        #     println("Finished defender oracle graph")
+        #     flush(stdout)
+        # end
+        time_graph_def_constr = []
     else
         time_graph_def_constr = nothing  # for consistent returning purposes
-        new_graph_def = nothing
+        # new_graph_def = nothing
     end
     
     # will be updated each iteration (just before coreLP run)
@@ -846,10 +1168,27 @@ function EIGSzhang!(eig::EIG, att_strats, def_strats; L_max=5, DO=defenderoracle
                 D_timeout_ = D_timeout
             end
             
-            results_ = @timed DO(eig, att_strats, att_probs, new_graph_def, timeout=D_timeout_, silent=silent_solvers)
-            new_def_strat, obj_DO, LP_DO = results_.value
+            results_ = @timed DO(eig, att_strats, att_probs, timeout=D_timeout_, silent=silent_solvers)
+            new_def_strat = results_.value.new_def_strat
+            obj_DO = results_.value.obj_value
+            LP_DO = results_.value.LP_DO
             
             push!(DO_time_over_time, results_.time)
+            
+            # get size of defender network graph (if done)
+            if DO == defenderoraclenew
+                push!(DO_network_nodes_over_time, results_.value.num_nodes_new_graph)
+                push!(DO_network_edges_over_time, results_.value.num_edges_new_graph)
+                push!(time_graph_def_constr, results_.value.time_new_graph_construction)
+            end
+
+            # # return signature of defenderoraclenew 
+            # return (new_def_strat=new_def_strat,
+            #     obj_value=obj_value,
+            #     LP_DO=LP_DOn,
+            #     num_nodes_new_graph=num_nodes_new_graph,
+            #     num_edges_new_graph=num_edges_new_graph,
+            #     time_new_graph_construction=time_new_graph_construction)
             
             # new_def_strat, obj_DO, LP_DO = DO(eig, att_strats, att_probs, L_max=L_max)
             
@@ -903,7 +1242,7 @@ function EIGSzhang!(eig::EIG, att_strats, def_strats; L_max=5, DO=defenderoracle
             # end
             
             # println("outside, the A_timeout is $A_timeout")
-            if A_timeout === nothing
+            if isnothing(A_timeout)
                 A_timeout_ = (start_time_ns + total_timeout_ns - time_ns()) / 1e9  # time given (secs) to attacker oracle
                 println("the A_timeout_ is $A_timeout_ (set)")
                 flush(stdout)
@@ -919,10 +1258,21 @@ function EIGSzhang!(eig::EIG, att_strats, def_strats; L_max=5, DO=defenderoracle
                 A_timeout_ = A_timeout
             end
             
-            results_ = @timed AO(eig, def_strats, def_probs, new_graph_att, timeout=A_timeout_, silent=silent_solvers)
-            new_att_strat, obj_AO, LP_AO = results_.value
+            results_ = @timed AO(eig, def_strats, def_probs, timeout=A_timeout_, silent=silent_solvers)
+            # new_att_strat, obj_AO, LP_AO = results_.value
+            
+            new_att_strat = results_.value.new_att_strat
+            obj_AO = results_.value.obj_value
+            LP_AO = results_.value.LP_AO
             
             push!(AO_time_over_time, results_.time)
+            
+            # get size of attacker network graph (if done)
+            if AO == attackeroraclenew
+                push!(AO_network_nodes_over_time, results_.value.num_nodes_new_graph)
+                push!(AO_network_edges_over_time, results_.value.num_edges_new_graph)
+                push!(time_graph_att_constr, results_.value.time_new_graph_construction)
+            end
             
             # new_att_strat, obj_AO, LP_AO = AO(eig, def_strats, def_probs, L_max=L_max)
             if primal_status(LP_AO) != FEASIBLE_POINT
@@ -949,10 +1299,6 @@ function EIGSzhang!(eig::EIG, att_strats, def_strats; L_max=5, DO=defenderoracle
                 if printing ≥ 1; println("\n!!! NO IMPROVING DEFENDER STRATEGY FOUND (AO TIMEOUT of $A_timeout_ )"); end
             else
                 if printing ≥ 1; println("\n!!! NO IMPROVING ATTACKER STRATEGY FOUND; obj_AO = $obj_AO"); end
-                
-                # if printing
-                #     println("\n!!! NO IMPROVING ATTACKER STRATEGY FOUND; obj_AO = $obj_AO")
-                # end
             end
         end
         
@@ -991,13 +1337,18 @@ function EIGSzhang!(eig::EIG, att_strats, def_strats; L_max=5, DO=defenderoracle
         AO_time_over_time=AO_time_over_time,
         convergence_flag=convergence_flag,
         time_graph_att_constr=time_graph_att_constr,
-        time_graph_def_constr=time_graph_def_constr)
+        time_graph_def_constr=time_graph_def_constr,
+        AO_network_nodes_over_time=AO_network_nodes_over_time,
+        AO_network_edges_over_time=AO_network_edges_over_time,
+        DO_network_nodes_over_time=DO_network_nodes_over_time,
+        DO_network_edges_over_time=DO_network_edges_over_time
+    )
 end
 
 # #### Original Zhang et al. Oracles
 
 # +
-function defenderoraclezhang(eig::EIG, att_strats, att_probs, graph=nothing; L_max=5, optimiser=Gurobi.Optimizer, timeout=60.0, silent=true, printing=0)
+function defenderoraclezhang(eig::EIG, att_strats, att_probs; L_max=nothing, optimiser=Gurobi.Optimizer, timeout=60.0, silent=true, printing=0)
     """
     Given available attacker strategies, finds an optimal pure defender strategy.
     
@@ -1016,7 +1367,9 @@ function defenderoraclezhang(eig::EIG, att_strats, att_probs, graph=nothing; L_m
     DELTA = eig.δ
     
     # estimate upper bound L_max on number of resource states for any resource 
-    L_max = eig.network.num_nodes  # haphazard choice for L_max (we have no theory on whether the defender should backtrack or not)
+    if isnothing(L_max)
+        L_max = eig.network.num_nodes  # haphazard choice for L_max (we have no theory on whether the defender should backtrack or not)
+    end
     
     bigM = ceil(T_MAX) + 1  # should be enough for the big M constraints (14 & 15)
 
@@ -1106,7 +1459,12 @@ function defenderoraclezhang(eig::EIG, att_strats, att_probs, graph=nothing; L_m
             println("Zhang DO timedout after ", timeout, " secs, but didn't find a feasible point")
             flush(stdout)
             # do something here? Like give it a bit more time to find a feasible point?
-            return nothing, nothing, LP_DO  # return essentially nothing
+            return (
+                new_def_strat=nothing,
+                obj_value=nothing,
+                LP_DO=LP_DO        
+            )
+            # return nothing, nothing, LP_DO  # return essentially nothing
         elseif primal_status(LP_DO) == FEASIBLE_POINT
             println("Zhang DO timedout after ", timeout, " secs, found a feasible point")
             flush(stdout)
@@ -1324,11 +1682,17 @@ function defenderoraclezhang(eig::EIG, att_strats, att_probs, graph=nothing; L_m
         
     end
     
-    return new_def_strat, obj_value, LP_DO
+    # return new_def_strat, obj_value, LP_DO
+
+    return (
+        new_def_strat=new_def_strat,
+        obj_value=obj_value,
+        LP_DO=LP_DO        
+    )
 end
 
 # +
-function attackeroraclezhang(eig::EIG, def_strats, def_probs, graph=nothing; L_max=5, optimiser=Gurobi.Optimizer, timeout=60.0, silent=true, printing=0)
+function attackeroraclezhang(eig::EIG, def_strats, def_probs; L_max=nothing, optimiser=Gurobi.Optimizer, timeout=60.0, silent=true, printing=0)
     """
     Given available defender strategies, finds an optimal pure attacker strategy.
     Assumes integral data.
@@ -1338,7 +1702,9 @@ function attackeroraclezhang(eig::EIG, def_strats, def_probs, graph=nothing; L_m
     
     nodes, edges, v_0, v_0r, exit_nodes, T_MAX, DELTA
     """
-    L_max = eig.network.num_nodes  # maximum number of needed attacker states (note an attacker should never return to a previously visited node)
+    if isnothing(L_max)
+        L_max = eig.network.num_nodes  # maximum number of needed attacker states (note an attacker should never return to a previously visited node)
+    end
     
     T_MAX = eig.t_max
     DELTA = eig.δ
@@ -1406,7 +1772,12 @@ function attackeroraclezhang(eig::EIG, def_strats, def_probs, graph=nothing; L_m
             println("Zhang AO timedout after ", timeout, " secs, but didn't find a feasible point")
             flush(stdout)
             # do something here? Like give it a bit more time to find a feasible point?
-            return nothing, nothing, LP_AO  # return essentially nothing
+            return (
+                new_att_strat=nothing,
+                obj_value=nothing,
+                LP_AO=LP_AO
+            )
+            # return nothing, nothing, LP_AO  # return essentially nothing
         elseif primal_status(LP_AO) == FEASIBLE_POINT
             println("Zhang AO timedout after ", timeout, " secs, found a feasible point")
             flush(stdout)
@@ -1531,7 +1902,13 @@ function attackeroraclezhang(eig::EIG, def_strats, def_probs, graph=nothing; L_m
 #     end
     
     
-    return new_att_strat, obj_value, LP_AO
+    # return new_att_strat, obj_value, LP_AO
+
+    return (
+        new_att_strat=new_att_strat,
+        obj_value=obj_value,
+        LP_AO=LP_AO
+    )
 end
 
 # +
@@ -1570,296 +1947,6 @@ end
 # -
 
 # #### New Oracles
-
-# ##### Completely discrete formulation
-
-# +
-# function attackeroracle_discrete(eig::EIG, def_strats, def_probs; optimiser=Gurobi.Optimizer)
-#     """
-#     Given available defender strategies, finds an optimal pure attacker strategy.
-#     Assumes integral data and eig.δ = 1.
-    
-#     def_strats: list of available defender strategies
-#     def_probs: list of probabilities of each defender strategy (given by coreLP)
-    
-#     nodes, edges, v_0, v_0r, exit_nodes, T_MAX, DELTA
-#     """
-#     T_MAX = eig.t_max
-#     DELTA = eig.δ
-#     @assert DELTA == 1
-    
-#     EPS_ = 0.5 * min(eig.δ, 1)  # for constraints (29), (30); assuming integral data
-    
-#     nodes = 1:eig.network.num_nodes
-#     nodes_1 = 1:eig.network.num_nodes - 1
-    
-#     v_inf = eig.network.v_∞
-#     v_0 = eig.network.v_0
-    
-#     max_time_int = ceil(eig.t_max / eig.δ)
-    
-#     # compute d values (d[η, v, y] = 1 iff there is a resource on node v at time (η - 1/2)δ)
-#     d = [-1 for η in 1:max_time_int, v=nodes_1, y=1:length(def_strats)]
-#     for η in 1:max_time_int
-#         for v in nodes_1
-#             for y in 1:length(def_strats)
-#                 # check if there is a resource on v at time (η - 1/2)δ
-#                 for r in 1:length(eig.network.v_0r)
-#                     # look through schedule of r
-#                     for state in def_strats[y][r]  # (slightly inefficient, but computing d is not the bottleneck of the oracle)
-#                         if state.v != v
-#                             continue
-#                         end
-                        
-#                         if state.t_a ≤ (η - 1/2)*eig.δ ≤ state.t_b
-#                             d[η, v, y] = 1
-#                             break;
-#                         end
-#                     end
-                    
-#                     if d[η, v, y] == 1
-#                         break;
-#                     end
-#                 end
-                
-#                 if d[η, v, y] != 1  # default value
-#                     d[η, v, y] = 0  # no resource found
-#                 end
-#             end
-#         end
-#     end
-    
-    
-#     # compute min distances
-#     min_dists = [Inf for _ in 1:eig.network.num_nodes]  
-#     for v in nodes
-#         dist = Inf
-#         for u in eig.neighbourhoods[v]
-#             if eig.dist_mtx[v, u] < dist
-#                 dist = eig.dist_mtx[v, u]
-#             end
-#         end
-#         min_dists[v] = dist
-#     end
-    
-    
-#     LP_AO_D = Model(optimiser);
-    
-#     @variable(LP_AO_D, a[η=1:max_time_int, v=nodes], Bin)  # ind. for if attacker is at node v at time (η - 1/2)δ
-#     @variable(LP_AO_D, z[y=1:length(def_strats)], Bin)
-    
-#     @constraint(LP_AO_D, con1, a[1, v_0] == 1)  # start at v_0
-#     @constraint(LP_AO_D, con2, a[max_time_int, v_inf] == 1)  # end at v_∞
-#     @constraint(LP_AO_D, con3[η=1:max_time_int], sum( a[η, v] for v=nodes ) ≤ 1)  # only on at most one vertex at each time
-#     @constraint(LP_AO_D, con4[v=nodes_1, η=1:max_time_int - min_dists[v], k=1:max_time_int - η],
-#         sum( a[η + eig.dist_mtx[v, u] + k, v] for u in eig.neighbourhoods[v] ) ≥ a[η, v])
-#     @constraint(LP_AO_D, con5[y=1:length(def_strats), v=nodes, η=1:max_time_int], z[y] ≥ d[η, v, y] * a[η, v])
-    
-#     # @objective(LP_AO, Max, sum( (1 - z[S])*def_probs[S] for S=1:length(def_strats) ))  # original objective in Zhang paper
-#     @objective(LP_AO_D, Min, sum( a[η, v] for v=nodes, η=1:max_time_int ) + eig.num_nodes * max_time_int * sum( z[S]*def_probs[S] for S=1:length(def_strats) ))
-    
-#     optimize!(LP_AO_D)
-    
-#     # extract attacker strategy from `a` variables which form a v_0-v_∞ path
-#     new_att_strat = []
-#     current_node = v_0
-#     for η=1:max_time_int
-#         # find vertex v such that a[j, v] == 1
-#         vertex = -1
-#         for v=eig.neighbourhoods[current_node]
-#             if value(a[η, v]) > 0.5
-#                 vertex = v
-#                 break;
-#             end
-#         end
-        
-#         if vertex == -1
-#             continue  # no vertex found for this η
-#         end
-        
-#         # add to strategy
-#         push!(new_att_strat, (v=vertex, t=(η - 1/2)*eig.δ))
-#         current_node = vertex
-        
-#         if current_node == v_inf
-#             break;  # reached v_inf
-#         end
-#     end
-    
-#     # compute prob of interdiction 
-#     int_prob = sum( value(z[S])*def_probs[S] for S=1:length(def_strats) )
-    
-#     # TESTING
-    
-#     # interdict test
-#     intdict = [doesinterdict(new_att_strat, def_strats[d], printing=true) for d=1:length(def_strats)]
-    
-#     for d=1:length(def_strats)
-#         println("z value for d=$d is $(value(z[d]))")
-        
-#         if (value(z[d]) >= 0.5) && intdict[d] == 0
-#             # z variable says interdiction occurs against attacker strat A, but doesinterdict says no interdiction
-#             println("\n?????? For def_strat No. $d, z variable is 1, but doesinterdict says interdiction OCCURS NOT")
-            
-#             if def_probs[d] == 0
-#                 println("Nevermind, the defender plays this strategy with prob 0")
-#             end
-            
-#         end
-#         if (value(z[d]) <= 0.5) && intdict[d] == 1
-#             println("\n?????? For def_strat No. $d, z variable is 0, but doesinterdict says interdiction OCCURS")
-#         end
-#     end
-    
-#     return new_att_strat, int_prob, LP_AO_D
-# end
-
-# +
-# # Nope - just do the network flow formulations
-# function defenderoracle_discrete(eig::EIG, att_strats, att_probs; optimiser=Gurobi.Optimizer)
-#     """
-#     Given available attacker strategies (with probs), finds an optimal pure defender strategy.
-#     Assumes integral data and eig.δ = 1.
-    
-#     att_strats: list of available attacker strategies
-#     att_probs: list of probabilities of each attacker strategy (given by coreLP)
-#     """
-#     T_MAX = eig.t_max
-#     DELTA = eig.δ
-#     @assert DELTA == 1
-    
-#     EPS_ = 0.5 * min(eig.δ, 1)  # for constraints (29), (30); assuming integral data
-    
-#     nodes = 1:eig.network.num_nodes
-#     nodes_1 = 1:eig.network.num_nodes - 1
-    
-#     v_inf = eig.network.v_∞
-#     v_0 = eig.network.v_0
-#     v_0r = eig.network.v_0r
-    
-#     max_time_int = ceil(eig.t_max / eig.δ)
-    
-#     # compute `a` values (a[η, v, x] = 1 iff the attacker is on node v at time η*δ (i.e., during time interval [(η-1/2)*δ, (η+1/2)*δ] ))
-#     a = [-1 for η in 1:max_time_int, v=nodes_1, x=1:length(att_strats)]  # no need to check v_∞
-#     for η in 1:max_time_int
-#         for v in nodes_1
-#             for x in 1:length(att_strats)
-#                 # look through schedule of attacker
-#                 for state in att_strats[x]  # (slightly inefficient, but computing `a` is not the bottleneck of the oracle)
-#                     if state.v != v
-#                         continue
-#                     end
-
-#                     if state.t == (η - 1/2)*eig.δ 
-#                         a[η, v, x] = 1
-#                         break;
-#                     end
-#                 end
-                
-#                 if a[η, v, x] != 1
-#                     a[η, v, x] = 0
-#                 end
-#             end
-#         end
-#     end
-    
-    
-#     # compute (non-zero) max and min distance
-#     max_dist_ = -1
-#     min_dist_ = Inf
-#     for v in nodes_1
-#         for u in nodes_1
-#             if u == v
-#                 continue
-#             end
-            
-#             if eig.dist_mtx[v, u] < min_dist_
-#                 min_dist_ = eig.dist_mtx[v, u]
-#             end
-                
-#             if eig.dist_mtx[v, y] > max_dist_
-#                 max_dist_ = eig.dist_mtx[v, u]
-#             end
-#         end
-#     end
-    
-    
-#     LP_DO_D = Model(optimiser);
-    
-#     @variable(LP_DO_D, br[η=1:max_time_int + max_dist_ + 1, v=nodes_1, r=1:length(v_0r)], Bin)  # ind. for if resource r is at node v at time (η - 1/2)δ
-#     for η=max_time_int+1:max_time_int + max_dist_ + 1
-#         for v=nodes_1
-#             fix(br[η, v], 0; force=true)  # defender can never be on nodes past t_max
-#         end
-#     end
-#     @variable(LP_DO_D, b[η=1:max_time_int, v=nodes_1], Bin)  # ind. for if some resource is at node v at time (η - 1/2)δ
-#     @variable(LP_DO_D, z[x=1:length(att_strats)], Bin)
-    
-#     @constraint(LP_DO_D, con1[r=1:length(v_0r)], br[1, v_0, r] == 1)  # start at v_0r
-#     @constraint(LP_DO_D, con2[η=1:max_time_int, r=1:length(v_0r)], sum( br[η, v, r] for v=nodes_1 ) ≤ 1)
-#     @constraint(LP_DO_D, con3[v=nodes_1, η=1:max_time_int - min_dist_, r=1:length(v_0r)], sum( br[η + eig.dist_mtx[v, u], u, r] for u=nodes_1 ) ≥ b[η, v, r])
-#     @constraint(LP_DO_D, con4[v=nodes_1, η=1:max_time_int], b[η, v] ≥ sum( br[η, v, r] for r=1:length(v_0r) ))
-#     @constraint(LP_DO_D, con5[x=1:length(att_strats), v=nodes_1, η=1:max_time_int], z[x] ≤ sum( a[η, v, x] * b[η, v] ))
-    
-#     # @objective(LP_AO, Max, sum( (1 - z[S])*def_probs[S] for S=1:length(def_strats) ))  # original objective in Zhang paper
-#     @objective(LP_AO_D, Max, sum( a[η, v] for v=nodes, η=1:max_time_int ) + eig.num_nodes * max_time_int * sum( z[x]*att_probs[x] for x=1:length(att_strats) ))
-    
-#     optimize!(LP_AO_D)
-    
-#     # extract attacker strategy from `a` variables which form a v_0-v_∞ path
-#     new_att_strat = []
-#     current_node = v_0
-#     for η=1:max_time_int
-#         # find vertex v such that a[j, v] == 1
-#         vertex = -1
-#         for v=eig.neighbourhoods[current_node]
-#             if value(a[η, v]) > 0.5
-#                 vertex = v
-#                 break;
-#             end
-#         end
-        
-#         if vertex == -1
-#             continue  # no vertex found for this η
-#         end
-        
-#         # add to strategy
-#         push!(new_att_strat, (v=vertex, t=(η - 1/2)*eig.δ))
-#         current_node = vertex
-        
-#         if current_node == v_inf
-#             break;  # reached v_inf
-#         end
-#     end
-    
-#     # compute prob of interdiction 
-#     int_prob = sum( value(z[S])*def_probs[S] for S=1:length(def_strats) )
-    
-#     # TESTING
-    
-#     # interdict test
-#     intdict = [doesinterdict(new_att_strat, def_strats[d], printing=true) for d=1:length(def_strats)]
-    
-#     for d=1:length(def_strats)
-#         println("z value for d=$d is $(value(z[d]))")
-        
-#         if (value(z[d]) >= 0.5) && intdict[d] == 0
-#             # z variable says interdiction occurs against attacker strat A, but doesinterdict says no interdiction
-#             println("\n?????? For def_strat No. $d, z variable is 1, but doesinterdict says interdiction OCCURS NOT")
-            
-#             if def_probs[d] == 0
-#                 println("Nevermind, the defender plays this strategy with prob 0")
-#             end
-            
-#         end
-#         if (value(z[d]) <= 0.5) && intdict[d] == 1
-#             println("\n?????? For def_strat No. $d, z variable is 0, but doesinterdict says interdiction OCCURS")
-#         end
-#     end
-    
-#     return new_att_strat, int_prob, LP_AO_D
-# end
-# -
 
 # ##### Network Formulation
 
@@ -1913,8 +2000,218 @@ function att_strat_to_A_half_strat(dist_mtx, att_strat, speed_A; tol=1E-7)
     return new_att_strat
 end
 
-function constructattackeroraclegraph(eig::EIG)
-   # construct graph (assuming DELTA == 1?, use half-delta values?)
+function def_strat_to_t_max(eig::EIG, def_strat)
+    """
+    Returns def_strat, except with t_b in the last state extended to >t_max
+    """
+    for res in def_strat
+        if res[end].t_b < eig.t_max
+            # extend it
+            new_t_b = ceil(eig.t_max)  # works assuming integral data (and \delta = 1)
+            res[end] = (v = res[end].v, t_a = res[end].t_a, t_b = new_t_b)
+        end
+    end
+
+    return def_strat
+end
+
+# + jupyter={"source_hidden": true}
+# function constructattackeroraclegraph(eig::EIG)
+#    # construct graph (assuming DELTA == 1?, use half-delta values?)
+#     # HALF_INTS = [i - 1/2 for i=1:ceil(eig.t_max)]  # does not contain 0 (though 0 gives some vertices in the time-extended network)
+    
+#     nodes = 1:eig.network.num_nodes
+#     nodes_1 = 1:eig.network.num_nodes - 1  # all nodes except v_∞
+#     v_0 = eig.network.v_0
+#     v_inf = eig.network.v_∞
+    
+#     # vertices (all of the form (v, i, b), where v is a node, i is 0 or a half-integer, b is -1 or 1)
+#     new_vs = []
+#     # new_vs = [(v, i, b) for v in nodes for i in HALF_INTS for b in [-1, 1]]
+    
+#     # only add vertices (v, i, b) such that the attacker travel time (in the orig. graph) from v_0 to v satisfies dist[v_0, v] / s_A <= i
+#     # and dist[v, v_∞] / s_A + i <= t_max
+#     for v in nodes
+#         d1 = div(eig.dist_mtx[v_0, v], eig.speed_A)
+#         d2 = div(eig.dist_mtx[v, v_inf], eig.speed_A)
+        
+#         # # crude for-loop version, but clear (possible to compute exact start and end values for the loop)
+#         # for i in HALF_INTS
+#         #     if d1 ≤ i && d2 + i ≤ eig.t_max
+#         #         # add (v, i, b)
+#         #         push!(new_vs, (v, i, 1))
+#         #         push!(new_vs, (v, i,-1))
+#         #     end
+#         # end
+        
+#         # add vertices of the form (v, i, b) (range for i is d1 ≤ i ≤ eig.t_max - d2 )
+#         i_half_strt = half_int_ceil(d1)
+#         i_half_end = half_int_floor(eig.t_max - d2)
+#         for i_half_int in i_half_strt:i_half_end
+#             # add (v, i_half_int, b)
+#             push!(new_vs, (v, i_half_int, 1))
+#             push!(new_vs, (v, i_half_int, -1))
+#         end
+#     end
+    
+#     # source and sink nodes
+#     source_node = (v_0, 0, 1)
+#     sink_node = (v_inf, ceil(eig.t_max) - 0.25, -1)  # (contents do not matter, as long as it is guaranteed not to be a key of an internal node 
+    
+#     push!(new_vs, source_node)  # note source and sink are last in new_vs
+#     push!(new_vs, sink_node)
+    
+#     # arcs, represented as an adjacency list for each vertex
+#     arc_lists_o = Dict(node => [] for node in new_vs)  # arcs going out from each vertex
+#     arc_lists_i = Dict(node => [] for node in new_vs)  # arcs going into each vertex
+    
+#     # add edges for v_0 (source node (v_0, 0, +1))
+#     for u in eig.neighbourhoods[v_0]
+#         d1 = div(eig.dist_mtx[v_0, u], eig.speed_A)
+#         d2 = div(eig.dist_mtx[u, v_inf], eig.speed_A)
+        
+#         # for j in HALF_INTS
+#         #     if d1 ≤ j ≤ eig.t_max - d2
+#         #         # node (u, j, b) exists
+#         #         push!(arc_lists_o[source_node], (u, j, -1))
+#         #         push!(arc_lists_i[(u, j, -1)], source_node)
+#         #     end
+#         # end
+
+#         j_half_strt = half_int_ceil(d1)
+#         j_half_end = half_int_floor(eig.t_max - d2)
+#         for j_half_int in j_half_strt:j_half_end  # range is d1 ≤ j_half_int ≤ eig.t_max - d2
+#             # node (u, j, b) exists
+#             push!(arc_lists_o[source_node], (u, j_half_int, -1))
+#             push!(arc_lists_i[(u, j_half_int, -1)], source_node)
+#         end
+#     end
+    
+#     for v in nodes_1  # process original vertices (not v_∞) 
+#         if v == v_0
+#             continue  # skip v_0 (it was processed above)
+#         end
+
+#         # distances for pre-processing out unneeded edges
+#         d1_v = div(eig.dist_mtx[v_0, v], eig.speed_A)
+#         d2_v = div(eig.dist_mtx[v, v_inf], eig.speed_A)
+        
+#         # add A1 arcs
+#         for u in eig.neighbourhoods[v]
+#             # if v > u
+#             #     # already processed u in a previous iteration ???????????????????????????? - IS THIS CORRECT - NO: else this will only construct nodes where v > u
+#             #     continue
+#             # end
+            
+#             if u == v_0
+#                 continue  # attacker should never backtrack, hence no arc 
+#             end
+            
+#             # distances for pre-processing out unneeded edges
+#             d1_u = div(eig.dist_mtx[v_0, u], eig.speed_A)
+#             d2_u = div(eig.dist_mtx[u, v_inf], eig.speed_A)
+#             d_vu = div(eig.dist_mtx[v, u], eig.speed_A)
+            
+#             # add arc (v, i, +1) (u, j -1) iff uv is an arc in the original graph and i + d(v,u) <= j (where i,j are half-ints)
+#             i_half_strt = half_int_ceil(d1_v)
+#             i_half_end = half_int_floor(eig.t_max - d2_v)
+
+#             j_half_strt1 = half_int_ceil(d1_u)
+#             j_half_end = half_int_floor(eig.t_max - d2_u)
+
+#             for i_half_int in i_half_strt:i_half_end  # range is d1_v ≤ i_half_int ≤ t_max - d2_v
+#                 j_half_strt2 = half_int_ceil(i_half_int + d_vu)
+#                 j_half_strt = j_half_strt1 > j_half_strt2 ? j_half_strt1 : j_half_strt2  # OPT: After a certain i_half_int, we always have j_half_strt1 < j_half_strt2
+                
+#                 for j_half_int in j_half_strt:j_half_end  # range is d1_u ≤ j_half_int ≤ t_max - d2_u && i_half_int + d_vu ≤ j_half_int 
+#                     # add arc (v, i, +1) (u, j -1) if i + d(v,u) <= j
+#                     push!(arc_lists_o[(v, i_half_int, 1)], (u, j_half_int,-1))  # !! this seems like a lot of arcs to be explicitly constructing - is there a clever way that exploits symmetry?
+#                     push!(arc_lists_i[(u, j_half_int,-1)], (v, i_half_int, 1))  # !! this seems like a lot of arcs to be explicitly constructing - is there a clever way that exploits symmetry?
+#                 end
+#             end
+            
+            
+#             # # add arc (v, i, +1) (u, j -1) iff uv is an arc in the original graph and i + d(v,u) <= j (where i,j are half-ints)
+#             # for i in HALF_INTS
+#             #     # check if (v, i, ±1) exists (dist[v_0, v] ≤ i && i + dist[v, v_inf] ≤ t_max )
+#             #     if div(eig.dist_mtx[v_0, v], eig.speed_A) > i || i + div(eig.dist_mtx[v, v_inf], eig.speed_A) > eig.t_max
+#             #         continue  # node (v, i, ±1) doesn't exist
+#             #     end
+                
+#             #     for j in HALF_INTS
+#             #         # check if (u, j, ±1) exists
+#             #         if div(eig.dist_mtx[v_0, u], eig.speed_A) > j || j + div(eig.dist_mtx[u, v_inf], eig.speed_A) > eig.t_max
+#             #             continue  # node (u, j, ±1) doesn't exist
+#             #         end
+                    
+#             #         # add arc (v, i, +1) (u, j -1) if i + d(v,u) <= j
+#             #         if i + div(eig.dist_mtx[v, u], eig.speed_A) ≤ j
+#             #             push!(arc_lists_o[(v, i, 1)], (u, j,-1))  # !! this seems like a lot of arcs to be explicitly constructing - is there a clever way that exploits symmetry?
+#             #             push!(arc_lists_i[(u, j,-1)], (v, i, 1))  # !! this seems like a lot of arcs to be explicitly constructing - is there a clever way that exploits symmetry?
+#             #         end
+#             #     end
+#             # end
+#         end
+#     end
+    
+#     # add A2 arcs
+#     for v in nodes
+#         i_half_strt = half_int_ceil(div(eig.dist_mtx[v_0, v], eig.speed_A))
+#         i_half_end = half_int_floor(eig.t_max - div(eig.dist_mtx[v, v_inf], eig.speed_A))
+#         for i_half_int in i_half_strt:i_half_end  # range is d1 ≤ i_half_int ≤ t_max - d2
+#             push!(arc_lists_o[(v, i_half_int,-1)], (v, i_half_int, 1))
+#             push!(arc_lists_i[(v, i_half_int, 1)], (v, i_half_int,-1))
+#         end
+#     end
+    
+#     # add A3 arcs
+#     i_half_strt = half_int_ceil(div(eig.dist_mtx[v_0, v_inf], eig.speed_A))
+#     i_half_end = half_int_floor(eig.t_max)
+#     for i_half_int in i_half_strt:i_half_end
+#         push!(arc_lists_o[(v_inf, i_half_int, 1)], sink_node)
+#         push!(arc_lists_i[sink_node], (v_inf, i_half_int, 1))
+#     end
+    
+#     # # add A3 arcs
+#     # for i in HALF_INTS
+#     #     if i < div(eig.dist_mtx[v_0, v_inf], eig.speed_A)
+#     #         continue
+#     #     end
+        
+#     #     push!(arc_lists_o[(v_inf, i, 1)], sink_node)
+#     #     push!(arc_lists_i[sink_node], (v_inf, i, 1))
+#     # end
+    
+#     return (new_vs=new_vs, arc_lists_o=arc_lists_o, arc_lists_i=arc_lists_i)
+# end
+# -
+
+the_eig = getEIGfromfile(converttrial2filepath(3, 1), t_max_offset=30.75)
+
+# +
+my_res_just_left_times = res_just_left_times = [[] for _ in 1:the_eig.network.num_nodes-1]
+push!(my_res_just_left_times[4], 27)
+push!(my_res_just_left_times[4], 29)
+push!(my_res_just_left_times[6], 19)
+
+
+result = constructattackeroraclegraph_SUPPBASED(the_eig, res_just_left_times=my_res_just_left_times, printing=false)
+# -
+
+display(length(result.new_vs))  # num nodes in attacker network
+sum(length(result.arc_lists_o[new_v]) for new_v in result.new_vs)  # num arcs in attacker network
+
+for new_v in result.new_vs
+    if new_v[1] == 4
+        println("$new_v has \n arc_lists_i = $(result.arc_lists_i[new_v])\n arc_lists_o = $(result.arc_lists_o[new_v])")
+    end
+end
+
+function constructattackeroraclegraph_SUPPBASED(eig::EIG; def_strats=[], res_just_left_times=nothing, printing=false)
+    """   
+    Constructs a partial attacker oracle graph based on the defender strats in def_strats (supposedly they are the support of the current defender strategy).
+    Main idea is: Only construct arc type A1 (u, i, +)(v, j, -) if some strat s in def_strats covers v at time j-δ but not at time j.
+    """
     # HALF_INTS = [i - 1/2 for i=1:ceil(eig.t_max)]  # does not contain 0 (though 0 gives some vertices in the time-extended network)
     
     nodes = 1:eig.network.num_nodes
@@ -1922,32 +2219,43 @@ function constructattackeroraclegraph(eig::EIG)
     v_0 = eig.network.v_0
     v_inf = eig.network.v_∞
     
-    # vertices (all of the form (v, i, b), where v is a node, i is 0 or a half-integer, b is -1 or 1)
-    new_vs = []
-    # new_vs = [(v, i, b) for v in nodes for i in HALF_INTS for b in [-1, 1]]
+    @assert(nodes[end] == v_inf, "nodes[end] must be v_inf")
+
+    # preprocess all node-time pairs (v, t) (t is half-int) where some strategy is covering (v, t)
+    if isnothing(res_just_left_times)
+        res_just_left_times = [Int[] for _ in nodes_1]  # vth entry is a list (sorted?) of times t where some strat in def_strats is covering (v, t - DELTA) but not (v, t)
+        for def_strat in def_strats
+            for res in def_strat
+                for state in res
+                    if state.v == v_0
+                        continue  # attacker should never backtrack, so no need to add oppurtunistic arcs for v_0
+                    end
     
-    # only add vertices (v, i, b) such that the attacker travel time (in the orig. graph) from v_0 to v satisfies dist[v_0, v] / s_A <= i
-    # and dist[v, v_∞] / s_A + i <= t_max
-    for v in nodes
-        d1 = div(eig.dist_mtx[v_0, v], eig.speed_A)
-        d2 = div(eig.dist_mtx[v, v_inf], eig.speed_A)
-        
-        # # crude for-loop version, but clear (possible to compute exact start and end values for the loop)
-        # for i in HALF_INTS
-        #     if d1 ≤ i && d2 + i ≤ eig.t_max
-        #         # add (v, i, b)
-        #         push!(new_vs, (v, i, 1))
-        #         push!(new_vs, (v, i,-1))
-        #     end
-        # end
-        
-        # add vertices of the form (v, i, b) (range for i is d1 ≤ i ≤ eig.t_max - d2 )
-        i_half_strt = half_int_ceil(d1)
-        i_half_end = half_int_floor(eig.t_max - d2)
-        for i_half_int in i_half_strt:i_half_end
-            # add (v, i_half_int, b)
-            push!(new_vs, (v, i_half_int, 1))
-            push!(new_vs, (v, i_half_int, -1))
+                    # defender cannot be on v_inf, so no need to check
+                    @assert(state.v != v_inf, "Defender cannot be on v_inf")
+                    
+                    if eig.dist_mtx[v_0, state.v] / eig.speed_A <= state.t_b < ceil(eig.t_max)  # no point in adding attacker arc with destination time >ceil(t_max) or one that is too fast
+                        if !(state.t_b in res_just_left_times[state.v])  # we want unique elements in each list
+                            push!(res_just_left_times[state.v], state.t_b)  # so the attacker may move to v at the half-int just after state.t_b
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    # new_vs = [(v, i, b) for v in nodes for i in HALF_INTS for b in [-1, 1]]
+    new_vs = []  # vertices (all of the form (v, i, b), where v is a node, i is 0 or a half-integer, b is -1 or 1)
+    new_vs_pairless = []  # of the form (v, i) such that (v, i, +) and (v, i, -) are both in new_vs; DOESN'T contain (v_0, 0)
+    active_vs = BinaryHeap(Base.By(last), [])  # min-heap of node-time pairs keyed by time still to be processed; (each (except for source and sink) will correspond to 2 vertices)
+    # SYNTAX: (node_idx, time) where time is a half-int
+    # add all oppurtunistic nodes to active_vs (so we don't have to check in the middle of for-loops below)
+    for v in nodes_1
+        if v == v_0
+            continue
+        end
+        for t in res_just_left_times[v]
+            push!(active_vs, (v, half_int_ceil(t)))
         end
     end
     
@@ -1955,145 +2263,235 @@ function constructattackeroraclegraph(eig::EIG)
     source_node = (v_0, 0, 1)
     sink_node = (v_inf, ceil(eig.t_max) - 0.25, -1)  # (contents do not matter, as long as it is guaranteed not to be a key of an internal node 
     
+    # arcs, represented as an adjacency list for each vertex
+    arc_lists_o = Dict()  # arcs going out from each vertex (don't initialise with objects, do it uniformly inside the for-loops below)
+    # initialise arc_lists_i with empty lists for all vertices (v, t) that are 'oppurtunistic' (i.e. have some def strat covering (v, t - δ) but not (v, t)), since we know these vertices must be processed
+    arc_lists_i = Dict((v, half_int_ceil(t), -1) => [] for v in nodes_1 for t in res_just_left_times[v])  # arcs going into each vertex
+    arc_lists_i[sink_node] = Tuple{Int64, Float64, Int64}[]  # initialise for sink node
+    
+    # process (v_0, 0)
+    arc_lists_o[source_node] = Tuple{Int64, Float64, Int64}[]  # add to dictionary o
+    for u in eig.neighbourhoods[v_0]
+        travel_time = eig.dist_mtx[v_0, u] / eig.speed_A  # an integer, assuming appropriately scaled integral data
+        t = half_int_ceil(travel_time)  # round up to nearest half-int (must travel slightly slower, cannot travel faster than max-speed - note our theory guarantees no loss of optimality)
+
+        if u == v_inf
+            # very weird (v_0-v_inf arc existing means attacker wins trivially)
+            println("V_0-V_INF ARC DETECTED")  # really, this should be detected in code much sooner before running any oracles
+            if eig.dist_mtx[v_0, v_inf] < eig.t_max
+                push!(arc_lists_o[source_node], sink_node)
+            end
+            continue
+        end
+        
+        flag_max_speed_is_opp = false  # true if it is found that the max-speed arc is also an oppurtunistic flag
+        
+        # add arcs at oppurtunistic times (times just after some resource leaves)
+        for t_left in res_just_left_times[u]
+            t_left = half_int_ceil(t_left)  # some resource has left u by this time
+            if t_left < t
+                continue  # attacker cannot travel arc (too quick)
+            elseif t_left + eig.dist_mtx[u, v_inf] / eig.speed_A > eig.t_max
+                continue  # attacker cannot reach v_inf in time 
+            end
+            
+            if t_left == t
+                flag_max_speed_is_opp = true
+            end
+            
+            # add oppurtunistic arc (v_0, 0, 1)(u, t_left, -1)
+            new_v = (u, t_left, -1)
+            push!(arc_lists_o[source_node], new_v)
+            push!(arc_lists_i[new_v], source_node)
+
+            if printing
+                println("  !! Added opp arc $source_node -> $new_v")
+            end
+            
+            # oppurtunistic node new_v is already in active_vs by preprocessing
+        end
+
+        if !flag_max_speed_is_opp
+            # add max-speed arc (v_0, 0, 1)(u, t, -1) 
+            new_v = (u, t, -1)  # note t is half-int
+            push!(arc_lists_o[source_node], new_v)
+            arc_lists_i[new_v] = [source_node]
+    
+            push!(active_vs, new_v)  # non-oppurtunistic, must add to heap active_vs
+        end
+    end
+
+    if printing
+        println("Done processing (v_0, 0) (v_0=$v_0)")
+        display(arc_lists_o)
+        display(arc_lists_i)
+    end
+    
+    
+    # process rest of nodes
+    while !isempty(active_vs)
+        node_time_pair = pop!(active_vs)        
+        v = node_time_pair[1]
+        t = node_time_pair[2]  # should be a half-int (if v isn't v_0)
+        @assert(isinteger(t - 1/2), "time $t should be a half-int (node $v in active_vs)")
+        @assert(v != v_inf, "v_inf shouldn't be in active_vs")
+        
+        if (v, t, 1) in new_vs
+            if printing
+                println("!!!!!!!! SKIPPING ALREADY PROCESSED NODE ($v, $t)")
+            end
+            continue  # already processed (is there a better way that avoids this?)
+        end
+        
+        # put appropriate nodes into new_vs
+        push!(new_vs, (v, t, -1))
+        curr_v = (v, t, 1)  # node from which we will now draw arcs from
+        push!(new_vs, curr_v)
+
+        push!(new_vs_pairless, (v, t))
+        
+        arc_lists_o[curr_v] = Tuple{Int64, Float64, Int64}[]  # add to dictionary o
+        
+        for u in eig.neighbourhoods[v]
+            if u == v_0
+                continue  # attacker should never backtrack
+            end
+            
+            travel_time = eig.dist_mtx[v, u] / eig.speed_A  # an integer
+            @assert(isinteger(travel_time), "travel_time $travel_time should be an integer (node $v to node $u)")
+            
+            if t + travel_time + eig.dist_mtx[u, v_inf] / eig.speed_A > eig.t_max
+                continue  # attacker shouldn't go to (u, t + travel_time) as there is not enough time to make it to v_inf
+            end
+
+            if u == v_inf
+                # link straight to sink (we checked above that it is feasible)
+                push!(arc_lists_o[curr_v], sink_node)
+                push!(arc_lists_i[sink_node], curr_v)
+                continue
+            end
+            
+            flag_max_speed_is_opp = false  # true if it is found that the max-speed arc is also an oppurtunistic flag
+            
+            # add oppurtunistic arcs
+            for t_left in res_just_left_times[u]
+                t_left = half_int_ceil(t_left)
+                if t_left < t + travel_time
+                    continue  # attacker cannot travel arc (too quick)
+                elseif t_left + eig.dist_mtx[u, v_inf] / eig.speed_A > eig.t_max
+                    continue  # attacker cannot reach v_inf in time 
+                end
+
+                if t_left == t + travel_time
+                    flag_max_speed_is_opp = true
+                end
+                
+                # add oppurtunistic arc (v_0, 0, 1)(u, t_left, -1)
+                new_v = (u, t_left, -1)
+                push!(arc_lists_o[curr_v], new_v)
+                push!(arc_lists_i[new_v], curr_v)
+                
+                if printing
+                    println("  !! Added opp arc $curr_v -> $new_v")
+                end
+                
+                # oppurtunistic node new_v is already in active_vs by preprocessing
+            end
+
+            if !flag_max_speed_is_opp
+                # add max-speed arc (v, t, 1)(u, t + d(v, u) / s_A, -1
+                new_v = (u, t + travel_time, -1)
+                push!(arc_lists_o[curr_v], new_v)
+
+                if printing
+                    temp = haskey(arc_lists_i, new_v)
+                    println("adding non-opp max-speed arc ($v, $t, 1)-($u, $(t + travel_time), -1); haskey(arc_lists_i, new_v) == $temp")
+                end
+                
+                if !haskey(arc_lists_i, new_v)  # maybe there is a smart way to avoid having to do this check?
+                    arc_lists_i[new_v] = Tuple{Int64, Float64, Int64}[]
+                    push!(active_vs, new_v)  # add to heap to be processed WARNING: POSSIBLE DUPLICATES?
+                end
+                push!(arc_lists_i[new_v], curr_v)
+    
+                # we know new_v is not in new_vs since t + travel_time > t and curr_v has minimal t
+            else
+                if printing
+                    println("    !! max-speed arc ($v, $t, 1)-($u, $(t + travel_time), -1) was opp")
+                end
+            end
+        end
+    end
+    
     push!(new_vs, source_node)  # note source and sink are last in new_vs
     push!(new_vs, sink_node)
     
-    # arcs, represented as an adjacency list for each vertex
-    arc_lists_o = Dict(node => [] for node in new_vs)  # arcs going out from each vertex
-    arc_lists_i = Dict(node => [] for node in new_vs)  # arcs going into each vertex
-    
-    # add edges for v_0 (source node (v_0, 0, +1))
-    for u in eig.neighbourhoods[v_0]
-        d1 = div(eig.dist_mtx[v_0, u], eig.speed_A)
-        d2 = div(eig.dist_mtx[u, v_inf], eig.speed_A)
-        
-        # for j in HALF_INTS
-        #     if d1 ≤ j ≤ eig.t_max - d2
-        #         # node (u, j, b) exists
-        #         push!(arc_lists_o[source_node], (u, j, -1))
-        #         push!(arc_lists_i[(u, j, -1)], source_node)
-        #     end
-        # end
-
-        j_half_strt = half_int_ceil(d1)
-        j_half_end = half_int_floor(eig.t_max - d2)
-        for j_half_int in j_half_strt:j_half_end  # range is d1 ≤ j_half_int ≤ eig.t_max - d2
-            # node (u, j, b) exists
-            push!(arc_lists_o[source_node], (u, j_half_int, -1))
-            push!(arc_lists_i[(u, j_half_int, -1)], source_node)
-        end
+    # add A2 arcs for nodes in new_vs; use new_vs_pairless so that each (v, t) +-pair is processed exactly once
+    for (v, t) in new_vs_pairless
+        arc_lists_o[(v, t, -1)] = [(v, t, 1)]  # -1 node only has 1 outgoing arc to its +1 counterpart
+        arc_lists_i[(v, t, 1)] = [(v, t, -1)]  # +1 node only has 1 incoming arc from its -1 counterpart
     end
-    
-    for v in nodes_1  # process original vertices (not v_∞) 
-        if v == v_0
-            continue  # skip v_0 (it was processed above)
-        end
 
-        # distances for pre-processing out unneeded edges
-        d1_v = div(eig.dist_mtx[v_0, v], eig.speed_A)
-        d2_v = div(eig.dist_mtx[v, v_inf], eig.speed_A)
-        
-        # add A1 arcs
-        for u in eig.neighbourhoods[v]
-            # if v > u
-            #     # already processed u in a previous iteration ???????????????????????????? - IS THIS CORRECT - NO: else this will only construct nodes where v > u
-            #     continue
-            # end
-            
-            if u == v_0
-                continue  # attacker should never backtrack, hence no arc 
+    # give full neighbourhoods for source and sink (so that formatting in arc_lists_i and arc_lists_o is consistent)
+    arc_lists_i[source_node] = []
+    arc_lists_o[sink_node] = []
+    
+    # A3 arcs are now captured by sending any virtual exit node directly to sink (which has destination time t_max) if feasible
+
+    sort!(new_vs_pairless, by = x -> x[2])  # maybe useful, maybe not
+    
+    return (new_vs=new_vs, arc_lists_o=arc_lists_o, arc_lists_i=arc_lists_i, new_vs_pairless=new_vs_pairless, source_node=source_node, sink_node=sink_node)
+end
+
+function does_def_strat_cover_vt(def_strat, v, t)
+    """
+    Simply function that returns true if def_strat covers (original) node v at time t, false otherwise.
+
+    def_strat: defender strategy
+    v: node index (of original EIG)
+    t: time
+    """
+    for res in def_strat
+        for state in res
+            if state.v != v
+                continue
             end
-            
-            # distances for pre-processing out unneeded edges
-            d1_u = div(eig.dist_mtx[v_0, u], eig.speed_A)
-            d2_u = div(eig.dist_mtx[u, v_inf], eig.speed_A)
-            d_vu = div(eig.dist_mtx[v, u], eig.speed_A)
-            
-            # add arc (v, i, +1) (u, j -1) iff uv is an arc in the original graph and i + d(v,u) <= j (where i,j are half-ints)
-            i_half_strt = half_int_ceil(d1_v)
-            i_half_end = half_int_floor(eig.t_max - d2_v)
 
-            j_half_strt1 = half_int_ceil(d1_u)
-            j_half_end = half_int_floor(eig.t_max - d2_u)
-
-            for i_half_int in i_half_strt:i_half_end  # range is d1_v ≤ i_half_int ≤ t_max - d2_v
-                j_half_strt2 = half_int_ceil(i_half_int + d_vu)
-                j_half_strt = j_half_strt1 > j_half_strt2 ? j_half_strt1 : j_half_strt2  # OPT: After a certain i_half_int, we always have j_half_strt1 < j_half_strt2
-                
-                for j_half_int in j_half_strt:j_half_end  # range is d1_u ≤ j_half_int ≤ t_max - d2_u && i_half_int + d_vu ≤ j_half_int 
-                    # add arc (v, i, +1) (u, j -1) if i + d(v,u) <= j
-                    push!(arc_lists_o[(v, i_half_int, 1)], (u, j_half_int,-1))  # !! this seems like a lot of arcs to be explicitly constructing - is there a clever way that exploits symmetry?
-                    push!(arc_lists_i[(u, j_half_int,-1)], (v, i_half_int, 1))  # !! this seems like a lot of arcs to be explicitly constructing - is there a clever way that exploits symmetry?
-                end
+            if state.t_a <= t <= state.t_b
+                return true
             end
-            
-            
-            # # add arc (v, i, +1) (u, j -1) iff uv is an arc in the original graph and i + d(v,u) <= j (where i,j are half-ints)
-            # for i in HALF_INTS
-            #     # check if (v, i, ±1) exists (dist[v_0, v] ≤ i && i + dist[v, v_inf] ≤ t_max )
-            #     if div(eig.dist_mtx[v_0, v], eig.speed_A) > i || i + div(eig.dist_mtx[v, v_inf], eig.speed_A) > eig.t_max
-            #         continue  # node (v, i, ±1) doesn't exist
-            #     end
-                
-            #     for j in HALF_INTS
-            #         # check if (u, j, ±1) exists
-            #         if div(eig.dist_mtx[v_0, u], eig.speed_A) > j || j + div(eig.dist_mtx[u, v_inf], eig.speed_A) > eig.t_max
-            #             continue  # node (u, j, ±1) doesn't exist
-            #         end
-                    
-            #         # add arc (v, i, +1) (u, j -1) if i + d(v,u) <= j
-            #         if i + div(eig.dist_mtx[v, u], eig.speed_A) ≤ j
-            #             push!(arc_lists_o[(v, i, 1)], (u, j,-1))  # !! this seems like a lot of arcs to be explicitly constructing - is there a clever way that exploits symmetry?
-            #             push!(arc_lists_i[(u, j,-1)], (v, i, 1))  # !! this seems like a lot of arcs to be explicitly constructing - is there a clever way that exploits symmetry?
-            #         end
-            #     end
-            # end
         end
     end
-    
-    # add A2 arcs
-    for v in nodes
-        i_half_strt = half_int_ceil(div(eig.dist_mtx[v_0, v], eig.speed_A))
-        i_half_end = half_int_floor(eig.t_max - div(eig.dist_mtx[v, v_inf], eig.speed_A))
-        for i_half_int in i_half_strt:i_half_end  # range is d1 ≤ i_half_int ≤ t_max - d2
-            push!(arc_lists_o[(v, i_half_int,-1)], (v, i_half_int, 1))
-            push!(arc_lists_i[(v, i_half_int, 1)], (v, i_half_int,-1))
-        end
-    end
-    
-    # add A3 arcs
-    i_half_strt = half_int_ceil(div(eig.dist_mtx[v_0, v_inf], eig.speed_A))
-    i_half_end = half_int_floor(eig.t_max)
-    for i_half_int in i_half_strt:i_half_end
-        push!(arc_lists_o[(v_inf, i_half_int, 1)], sink_node)
-        push!(arc_lists_i[sink_node], (v_inf, i_half_int, 1))
-    end
-    
-    # # add A3 arcs
-    # for i in HALF_INTS
-    #     if i < div(eig.dist_mtx[v_0, v_inf], eig.speed_A)
-    #         continue
-    #     end
-        
-    #     push!(arc_lists_o[(v_inf, i, 1)], sink_node)
-    #     push!(arc_lists_i[sink_node], (v_inf, i, 1))
-    # end
-    
-    return (new_vs=new_vs, arc_lists_o=arc_lists_o, arc_lists_i=arc_lists_i)
+
+    return false
 end
 
 # +
-function attackeroraclenew(eig::EIG, def_strats, def_probs, new_graph, flow_accept_tol=1e-7, optimiser=Gurobi.Optimizer; timeout=60.0, silent=true)
+function attackeroraclenew(eig::EIG, def_strats, def_probs; flow_accept_tol=1e-7, optimiser=Gurobi.Optimizer, timeout=60.0, silent=true)
     """
     Given available defender strategies, finds an optimal pure attacker strategy.
     
     def_strats: list of available defender strategies
     """
-    # construct graph (assuming DELTA == 1?, use half-delta values?)
-    HALF_INTS = [i - 1/2 for i=1:ceil(eig.t_max)]  # does not contain 0 (though 0 gives some vertices in the time-extended network)
+    def_supp = []  # def strats in the current support 
+    def_supp_probs = []  # def strats in the current support
+
+    for (idx, s) in enumerate(def_strats)
+        if def_probs[idx] > 0
+            push!(def_supp, s)
+            push!(def_supp_probs, def_probs[idx])
+        end
+    end
     
-    nodes = 1:eig.network.num_nodes
-    nodes_1 = 1:eig.network.num_nodes - 1
+    # construct graph
+    time_new_graph_construction = @elapsed new_graph = constructattackeroraclegraph_SUPPBASED(eig, def_strats=def_supp)
+    num_nodes_new_graph = length(new_graph.new_vs)
+    num_edges_new_graph = sum(length(new_graph.arc_lists_o[new_v]) for new_v in new_graph.new_vs)
+    
+    # HALF_INTS = [i - 1/2 for i=1:ceil(eig.t_max)]  # does not contain 0 (though 0 gives some vertices in the time-extended network)
+    
+    # nodes = 1:eig.network.num_nodes
+    # nodes_1 = 1:eig.network.num_nodes - 1
     v_0 = eig.network.v_0
     v_inf = eig.network.v_∞
     
@@ -2104,62 +2502,35 @@ function attackeroraclenew(eig::EIG, def_strats, def_probs, new_graph, flow_acce
     arc_lists_i = new_graph.arc_lists_i  # arcs going into each vertex
     
     # source and sink nodes (for brevity)
-    source_node = (v_0, 0, 1)
-    sink_node = (v_inf, ceil(eig.t_max) - 0.25, -1)
-    
-    # compute ind_yvi (1 if defender strat y has a resource on node v (original graph) at time i), as this is a coefficient in our MILP
-    ind_yvi = [0 for y in def_strats, v in nodes, i in HALF_INTS]  # assume 0 until we can find a counterexample (a resource in y on v at i)
-    
-    for (y_idx, y) in enumerate(def_strats)
-        if def_probs[y_idx] == 0
-            continue  # ignore strategies with 0 probability
-        end
-        
-        for r_schedule in y
-            # process schedule and trigger appropriate indicators if a counterxample is found
-            
-            i_idx = 1  # iterate through HALF_INT
-            state_idx = 1
-            
-            while i_idx <= length(HALF_INTS) && state_idx <= length(r_schedule)
-                if r_schedule[state_idx].t_b < HALF_INTS[i_idx]
-                    # resource left node; go to next state to check
-                    state_idx += 1
-                    continue  # next while loop iteration (for not updating i_idx)
-                elseif r_schedule[state_idx].t_a <= HALF_INTS[i_idx]
-                   # resource at node; trigger indicator
-                    ind_yvi[y_idx, r_schedule[state_idx].v, i_idx] = 1
-                end
-                
-                i_idx += 1  # update i
-            end
-            
-            # either i_idx is out of range or state_idx is out of range
-            # in any case, there shouldn't be any more ind_yvi to activate for this resource
-        end
-    end
+    source_node = new_graph.source_node #(v_0, 0, 1)
+    sink_node = new_graph.sink_node #(v_inf, ceil(eig.t_max) - 0.25, -1)
+
+    @assert(new_vs[end-1] == source_node && new_vs[end] == sink_node, "Final two entries of new_vs must be [source_node, sink_node]")
     
     # form MILP
     LP_AOn = Model(optimiser);
     if silent; set_silent(LP_AOn); end
     
     @variable(LP_AOn, x[a=new_vs, b=new_vs; b in arc_lists_o[a]], Bin)  # arc flow variables
-    @variable(LP_AOn, z[y=1:length(def_strats)], Bin)  # indicator variable for if def strat y interdicts att strat given by flows
+    @variable(LP_AOn, z[y=1:length(def_supp)], Bin)  # indicator variable for if def strat y interdicts att strat given by flows
     
-    @constraint(LP_AOn, con3p1[a=new_vs[1:end-2]], sum( x[b, a] for b in arc_lists_i[a] ) == sum( x[a, c] for c in arc_lists_o[a] ) )  # flow balance at each internal node
+    @constraint(LP_AOn, con3p1[a=new_vs[1:end-2]], sum( x[b, a] for b in arc_lists_i[a] ) == sum( x[a, c] for c in arc_lists_o[a] ) )  # flow balance at each internal node: NOTE need source and sink to be final 2 in new_vs
     @constraint(LP_AOn, con3p2, sum( x[source_node, b] for b in arc_lists_o[source_node] ) == 1)
     @constraint(LP_AOn, con3p3, sum( x[a, sink_node] for a in arc_lists_i[sink_node] ) == 1)
-    # @constraint(LP_AOn, con3p4[y=1:length(def_strats)], z[y] ≤
-    #     sum( ind_yvi[y, v, i_idx] * x[(v, i, -1), (v, i, 1)] for v in nodes_1, (i_idx, i) in enumerate(HALF_INTS) )) 
-    
-    # TODO revise constraint below to respect existence; (v, i, ±1) exists iff dist[v_0, v] ≤ i && i + dist[v, v_∞] ≤ t_max
-    # note HALF_INTS[i] == i - 0.5
-    @constraint(LP_AOn, con3p4[y=1:length(def_strats), v=nodes_1, i_idx=1:length(HALF_INTS);
-            eig.dist_mtx[v_0, v] / eig.speed_A ≤ HALF_INTS[i_idx] && HALF_INTS[i_idx] + eig.dist_mtx[v, v_inf] / eig.speed_A ≤ eig.t_max ], 
-        z[y] ≥ ind_yvi[y, v, i_idx] * x[(v, HALF_INTS[i_idx], -1), (v, HALF_INTS[i_idx], 1)])
+
+    # 2nd approach, iterate (v, t) through new_vs_pairless and add appropriate con3p4 constraints (after defining variable in ILP)
+    for (v, t) in new_graph.new_vs_pairless
+        # find def strats that cover (v, t)
+        for (def_strat_idx, def_strat) in enumerate(def_supp)
+            if does_def_strat_cover_vt(def_strat, v, t)
+                # include constraint for this def_strat, v, t combination
+                @constraint(LP_AOn, z[def_strat_idx] >= x[(v, t, -1), (v, t, 1)])
+            end
+        end
+    end
     
     # @objective(LP_AOn, Max, sum( (1 - def_probs[y]) * z[y] for y=1:length(def_strats) ))
-    @objective(LP_AOn, Min, sum( def_probs[y] * z[y] for y=1:length(def_strats) ))  # prob of interdiction
+    @objective(LP_AOn, Min, sum( def_supp_probs[y] * z[y] for y=1:length(def_supp) ))  # prob of interdiction   
     
     set_time_limit_sec(LP_AOn, timeout)
     
@@ -2170,7 +2541,13 @@ function attackeroraclenew(eig::EIG, def_strats, def_probs, new_graph, flow_acce
             println("Network AO timedout after ", timeout, " secs, but didn't find a feasible point")
             flush(stdout)
             # do something here? Like give it a bit more time to find a feasible point?
-            return nothing, nothing, LP_AOn  # return essentially nothing
+            return (new_att_strat=nothing,
+                obj_value=nothing,
+                LP_AO=LP_AOn,
+                num_nodes_new_graph=num_nodes_new_graph,
+                num_edges_new_graph=num_edges_new_graph,
+                time_new_graph_construction=time_new_graph_construction)
+            # return nothing, nothing, LP_AOn  # return essentially nothing
         elseif primal_status(LP_AOn) == FEASIBLE_POINT
             println("Network AO timedout after ", timeout, " secs, found a feasible point")
             flush(stdout)
@@ -2225,10 +2602,7 @@ function attackeroraclenew(eig::EIG, def_strats, def_probs, new_graph, flow_acce
     # curr_time = 0
     curr_node = source_node  # current node in time-ext. graph
 
-    # arcs_to_sub = []  # list of arcs whose flows will be subtracted
-
-
-    for i in HALF_INTS  # !! WARNING, will not cover sink node, but no need since the sink node here does not correspond with a node in the og graph
+    while curr_node[1] != v_inf
         # find flow from (curr_node, curr_time, 1)
         for node in arc_lists_o[curr_node]
             if value(x[curr_node, node]) > 0.5
@@ -2237,208 +2611,485 @@ function attackeroraclenew(eig::EIG, def_strats, def_probs, new_graph, flow_acce
                     push!(new_att_strat, (v=node[1], t=node[2]))  # recall node is of the form (v, i, 1) or (v, i, -1); however, we only want to record (v, i) once
                 end
 
-                # # update min_arc_flow
-                # if min_arc_flow > curr_flows[(curr_node, node)]
-                #     min_arc_flow = curr_flows[(curr_node, node)]
-                # end
-
-#                 my_debug = curr_flows[(curr_node, node)]
-#                 my_value = value(x[curr_node, node])
-
-                # println("Found: old node is $curr_node new node is $node with min_arc_flow value $min_arc_flow")
-
-                # push!(arcs_to_sub, (curr_node, node))
-
-                # curr_flows[(curr_node, node)] -= value(x[curr_node, node])
-
-
                 curr_node = node
 
                 break;  # next half_int
             end
         end
-
+        
         # display(curr_node)
-
-        if curr_node[1] == v_inf
-            # path is done
-            break;
-        end
     end
-
-#         # add sink node (since it is not covered in the above loop)
-#         sink_arrival_time = -1.0
-#         push!(new_att_strat, (v=v_inf, t=node[2]))
-        
-#         for b in arc_lists_i[sink_node]
-#             println("Checking $b")
-#             if value(x[b, sink_node]) > 0.5
-#                 println("!!!! SINK: Found x[$b, $sink_node] = 1")
-#                 sink_arrival_time = b[2]
-#             end
-#         end
-#         push!(new_att_strat, (v=v_inf, t=sink_arrival_time))
-        
-#         # update curr_flows by subtracting appropriate flow according to arcs_to_sub
-#         for arc in arcs_to_sub
-#             curr_flows[arc] -= min_arc_flow
-#         end
-        
-#         push!(att_strats, new_att_strat)
-        
-#         outgoing_flow = sum(curr_flows[(source_node, b)] for b in arc_lists_o[source_node])
-        
-#         # println("!!!!Done a path, sum of flows out of source is now: $outgoing_flow")        
-    # end  # endwhile
     
     obj_value = objective_value(LP_AOn)
     
-    return new_att_strat, obj_value, LP_AOn
+    return (new_att_strat=new_att_strat,
+        obj_value=obj_value,
+        LP_AO=LP_AOn,
+        num_nodes_new_graph=num_nodes_new_graph,
+        num_edges_new_graph=num_edges_new_graph,
+        time_new_graph_construction=time_new_graph_construction)
 end
+
+# + jupyter={"source_hidden": true}
+# function constructdefenderoraclegraph(eig::EIG)
+#    # construct graph (assuming DELTA == 1?, use half-delta values?)
+#     HALF_INTS = [i - 1/2 for i=1:Int(ceil(eig.t_max))]  # does not contain 0 (though 0 gives some vertices in the time-extended network)
+    
+#     nodes = 1:eig.network.num_nodes
+#     nodes_1 = 1:eig.network.num_nodes - 1  # nodes without v_inf
+#     v_0 = eig.network.v_0
+#     v_inf = eig.network.v_∞
+
+#     @assert(nodes[end] == v_inf, "nodes[end] must be v_inf")
+
+#     # vertices (all of the form (v, i, b), where v is a node, i is 0 or a half-integer, b is -1 or 1)
+#     new_vs = []
+#     # new_vs = [(v, i, b) for v in nodes for i in HALF_INTS for b in [-1, 1]]
+    
+#     # only add vertices (v, i) such that the defender travel time t = d(v_0r, v) / s_D (in the orig. graph) from some v_0r to v satisfies t <= i
+#     for v in nodes_1
+#         i_strt = minimum(div(eig.dist_mtx[v_0r, v], eig.speed_D) for v_0r in eig.network.v_0r )
+#         i_end = ceil(eig.t_max)
+#         for i in i_strt:i_end
+#             push!(new_vs, (v, Int(i)))  # defender can reach v within time i
+            
+#             # # exclude if the shortest distance from any v_0r to v is greater than i
+#             # shortest_dist = minimum(div(eig.dist_mtx[v_0r, v], eig.speed_D) for v_0r in eig.network.v_0r )
+
+#             # if shortest_dist <= i
+#             #     push!(new_vs, (v, Int(i)))  # defender can reach v within time i
+#             # end
+#         end
+#     end
+    
+#     # # add (v_0^r, 0) - ALREADY DONE ABOVE
+#     # for v_0r in unique(eig.network.v_0r)  # ensure each resource-initial node is only done once
+#     #     push!(new_vs, (v_0r, 0))
+#     # end
+    
+#     # add R_0 and R_∞ (source and sink), keys don't matter (-1 in left to ensure representation is not in another node)
+#     source_node = (-1, -1)
+#     sink_node = (-1, ceil(eig.t_max) + 2)  # key doesn't matter
+    
+#     push!(new_vs, source_node)
+#     push!(new_vs, sink_node)
+    
+#     # arcs, represented as an adjacency list for each vertex
+#     arc_lists_o = Dict(node => [] for node in new_vs)  # arcs going out from each vertex
+#     arc_lists_i = Dict(node => [] for node in new_vs)  # arcs going into each vertex
+    
+#     # draw B1 arcs
+#     for v_0r in unique(eig.network.v_0r)
+#         push!(arc_lists_o[source_node], (v_0r, 0))
+#         push!(arc_lists_i[(v_0r, 0)], source_node)
+#     end
+    
+#     # draw B2 arcs
+#     for u in nodes_1
+#         for v in eig.neighbourhoods[u]
+#             if v == v_inf
+#                 continue  # defender cannot go to v_∞
+#             end
+#             i_strt = Int(minimum(div(eig.dist_mtx[v_0r, u], eig.speed_D) for v_0r in eig.network.v_0r ))
+#             i_end = Int(ceil(eig.t_max) - div(eig.dist_mtx[u, v], eig.speed_D))
+
+#             # minimum(eig.dist_mtx[v_0r, v] for v_0r in eig.network.v_0r ) ≤ i && i + div(eig.dist_mtx[u, v], eig.speed_D) ≤ ceil(eig.t_max) must be true to add (u,i)(v,j)
+#             for i in i_strt:i_end
+#                 # add (u,i)(v,j)
+#                 j = i + Int(div(eig.dist_mtx[u, v], eig.speed_D))
+                
+#                 push!(arc_lists_o[(u, i)], (v, j))
+#                 push!(arc_lists_i[(v, j)], (u, i))
+
+#                 # note: if u is some v_0r, then i_strt == 0
+#             end
+#         end
+#     end
+#     # # take care of i=0 case, so adding arcs (v_0r, 0)(v, j) - ALREADY DONE ABOVE
+#     # for v_0r in unique(eig.network.v_0r)
+#     #     for v in eig.neighbourhoods[v_0r]
+#     #         if v == v_inf
+#     #             continue
+#     #         end
+            
+#     #         j = div(eig.dist_mtx[v_0r, v], eig.speed_D)
+
+#     #         if j ≤ ceil(eig.t_max)
+#     #             j = Int(j)
+#     #             push!(arc_lists_o[(v_0r, 0)], (v, j))
+#     #             push!(arc_lists_i[(v, j)], (v_0r, 0))
+#     #         end
+#     #     end
+#     # end
+    
+#     # draw B3 arcs
+#     for v in nodes_1
+#         for i in minimum(div(eig.dist_mtx[v_0r, v], eig.speed_D) for v_0r in eig.network.v_0r ) + eig.δ : ceil(eig.t_max)
+#             # add (v, i - eig.δ)(v, i); note the start idx for i is so that (v, i - eig.δ) actually exists
+            
+#             i = Int(i)
+
+#             push!(arc_lists_o[(v, i - eig.δ)], (v, i))
+#             push!(arc_lists_i[(v, i)], (v, i - eig.δ))
+#         end
+#     end
+#     # # take care of i=1 case, so adding arcs (v_0r, 0)(v_0r, eig.δ)
+#     # for v_0r in unique(eig.network.v_0r)
+#     #     push!(arc_lists_o[(v_0r, 0)], (v_0r, eig.δ))
+#     #     push!(arc_lists_i[(v_0r, eig.δ)], (v_0r, 0))
+#     # end
+    
+#     # draw B4 arcs
+#     i_strt1 = ceil(eig.t_max) - eig.δ
+#     for v in nodes_1
+#         # i must satisfy ceil(eig.t_max) - eig.δ <= i && minimum(div(eig.dist_mtx[v_0r, v], eig.speed_D) for v_0r in eig.network.v_0r ) <= i
+#         i_strt2 = minimum(div(eig.dist_mtx[v_0r, v], eig.speed_D) for v_0r in eig.network.v_0r )
+        
+#         i_strt = i_strt1 > i_strt2 ? i_strt1 : i_strt2
+#         for i in i_strt:ceil(eig.t_max)
+            
+#             i = Int(i)
+#             push!(arc_lists_o[(v, i)], sink_node)
+#             push!(arc_lists_i[sink_node], (v, i))
+            
+#             # if minimum(eig.dist_mtx[v_0r, v] for v_0r in eig.network.v_0r ) <= i
+#             #     push!(arc_lists_o[(v, i)], sink_node)
+#             #     push!(arc_lists_i[sink_node], (v, i))
+#             # end
+#         end
+#     end
+    
+#     return (new_vs=new_vs, arc_lists_o=arc_lists_o, arc_lists_i=arc_lists_i, source_node=source_node, sink_node=sink_node)
+# end
 # -
 
-function constructdefenderoraclegraph(eig::EIG)
-   # construct graph (assuming DELTA == 1?, use half-delta values?)
-    HALF_INTS = [i - 1/2 for i=1:Int(ceil(eig.t_max))]  # does not contain 0 (though 0 gives some vertices in the time-extended network)
-    
+the_eig = getEIGfromfile(converttrial2filepath(6, 1), t_max_offset=30.75)
+
+# +
+# att_cover_times = [[] for _ in 1:the_eig.network.num_nodes-1]
+# push!(att_cover_times[4], 27.5)
+# push!(att_cover_times[4], 29.5)
+# push!(att_cover_times[6], 19.5)
+
+my_att_strat = [(v=the_eig.network.v_0, t=0),
+    (v=4, t=454.5),
+    (v=4, t=404.5),
+    (v=5, t=410.5),
+    (v=6, t=450.5),
+    (v=6, t=461.5)
+]
+
+my_att_strat = [(v=the_eig.network.v_0, t=0),
+    (v=4, t=404.5),
+    (v=4, t=405.5),
+    (v=4, t=406.5),
+    (v=4, t=407.5),
+    (v=5, t=417.5)
+]
+
+result = constructdefenderoraclegraph_SUPPBASED(the_eig, att_strats=[my_att_strat], printing=true)
+# -
+
+function constructdefenderoraclegraph_SUPPBASED(eig::EIG; att_strats=[], att_cover_times=nothing, printing=false)
+    """
+    Constructs a partial defender oracle graph based on the attacker strats in def_strats (supposedly they are the support of the current attacker strategy).
+    Main idea is: Only construct arc type A1 (u, i, +)(v, j, -) if some strat s in def_strats covers v at time j-δ but not at time j.
+    """
     nodes = 1:eig.network.num_nodes
     nodes_1 = 1:eig.network.num_nodes - 1  # nodes without v_inf
     v_0 = eig.network.v_0
     v_inf = eig.network.v_∞
-    
-    # vertices (all of the form (v, i, b), where v is a node, i is 0 or a half-integer, b is -1 or 1)
-    new_vs = []
-    # new_vs = [(v, i, b) for v in nodes for i in HALF_INTS for b in [-1, 1]]
-    
-    # only add vertices (v, i) such that the defender travel time t = d(v_0r, v) / s_D (in the orig. graph) from some v_0r to v satisfies t <= i
-    
-    # add all (v, i) (no matter about distances); maybe exclude vertices where r shouldn't be (such as (v, i) where d(v, v_∞) + i < t_max)?
-    for v in nodes_1
-        i_strt = minimum(div(eig.dist_mtx[v_0r, v], eig.speed_D) for v_0r in eig.network.v_0r )
-        i_end = ceil(eig.t_max)
-        for i in i_strt:i_end
-            push!(new_vs, (v, Int(i)))  # defender can reach v within time i
-            
-            # # exclude if the shortest distance from any v_0r to v is greater than i
-            # shortest_dist = minimum(div(eig.dist_mtx[v_0r, v], eig.speed_D) for v_0r in eig.network.v_0r )
 
-            # if shortest_dist <= i
-            #     push!(new_vs, (v, Int(i)))  # defender can reach v within time i
-            # end
+    @assert(nodes[end] == v_inf, "nodes[end] must be v_inf")
+    
+    if isnothing(att_cover_times)
+        # compute attacker cover times
+        att_cover_times = [Int[] for _ in nodes_1]  # indexed by nodes (not v_inf) with vth entry the collection of times t - 0.5 where some att strat in att_strats is on v at t
+
+        shortest_r_dist = [minimum(div(eig.dist_mtx[v_0r, v], eig.speed_D) for v_0r in eig.network.v_0r) for v in nodes_1]  # for truncating due to shortest defender paths
+        
+        for att_strat in att_strats
+            for state in att_strat
+                if state.t == 0 || state.v == v_inf
+                    continue  # don't include start or end (defender can never interdict here)
+                end
+
+                if state.t < shortest_r_dist[state.v]
+                    continue  # defender can never reach state.v at time state.t, so no point in trying to cover it
+                end
+                
+                floor_time = state.t - 0.5
+                @assert(isinteger(floor_time), "state.t - 0.5 = $floor_time should be an integer")
+                @assert(state.t <= eig.t_max, "state.t = $state.t should be at most eig.t_max")
+                push!(att_cover_times[state.v], Int(floor_time))
+            end
         end
     end
+
+    # sort each att_cover_times list (in preparation for avoiding double-pushing to new_vs)
+    for x in att_cover_times
+        sort!(x)
+    end
     
-    # # add (v_0^r, 0) - ALREADY DONE ABOVE
-    # for v_0r in unique(eig.network.v_0r)  # ensure each resource-initial node is only done once
-    #     push!(new_vs, (v_0r, 0))
-    # end
+    # vertices (all of the form (v, i), where v is a node, i is 0 an integer (or special source/sink nodes)
+    new_vs = []
+    # new_vs_just_before_cover = []  # sub-list of new_vs of all (v, t) such that (v, t+0.5) is attacker-covered; will be iterated over in the main loop for drawing arcs
+        # doesn't include source nor sink node
+        # TODO: is this now useless with the is_new_vs_just_before_cover flag?
     
     # add R_0 and R_∞ (source and sink), keys don't matter (-1 in left to ensure representation is not in another node)
     source_node = (-1, -1)
-    sink_node = (-1, ceil(eig.t_max) + 2)  # key doesn't matter
+    sink_node = (-1, Int(ceil(eig.t_max)) + 2)  # key doesn't matter (as long as time-coordinate is bigger than all others)
     
     push!(new_vs, source_node)
-    push!(new_vs, sink_node)
     
-    # arcs, represented as an adjacency list for each vertex
-    arc_lists_o = Dict(node => [] for node in new_vs)  # arcs going out from each vertex
-    arc_lists_i = Dict(node => [] for node in new_vs)  # arcs going into each vertex
-    
-    # draw B1 arcs
-    for v_0r in unique(eig.network.v_0r)
-        push!(arc_lists_o[source_node], (v_0r, 0))
-        push!(arc_lists_i[(v_0r, 0)], source_node)
+    # add v_0^r vertices
+    for v_0r in unique(eig.network.v_0r)  # ensure each resource-initial node is only done once
+        push!(new_vs, (v_0r, 0))
     end
-    
-    # draw B2 arcs
-    for u in nodes_1
-        for v in eig.neighbourhoods[u]
-            if v == v_inf
-                continue  # defender cannot go to v_∞
+
+    # add internal vertices and t_max vertices
+    for v in nodes_1
+        prev_t = -2  # t value in the previous iteration in the following for-loop
+        
+        for t in att_cover_times[v]
+            # add vertices 'surrounding' the attacker cover point (recall t+0.5 is the time that the attacker actually arrives at v)            
+            # only add (v, t) if it wasn't added last iteration (assuming att_cover_times[v] is sorted)
+            if prev_t + 1 != t
+                push!(new_vs, (v, t))
             end
-            i_strt = Int(minimum(div(eig.dist_mtx[v_0r, u], eig.speed_D) for v_0r in eig.network.v_0r ))
-            i_end = Int(ceil(eig.t_max) - div(eig.dist_mtx[u, v], eig.speed_D))
 
-            # minimum(eig.dist_mtx[v_0r, v] for v_0r in eig.network.v_0r ) ≤ i && i + div(eig.dist_mtx[u, v], eig.speed_D) ≤ ceil(eig.t_max) must be true to add (u,i)(v,j)
-            for i in i_strt:i_end
-                # add (u,i)(v,j)
-                j = i + Int(div(eig.dist_mtx[u, v], eig.speed_D))
-                
-                push!(arc_lists_o[(u, i)], (v, j))
-                push!(arc_lists_i[(v, j)], (u, i))
-
-                # note: if u is some v_0r, then i_strt == 0
+            push!(new_vs, (v, t + 1))  # always add this node
+            
+            # push!(new_vs_just_before_cover, (v, t))  # only push (v, t)
+            prev_t = t
+        end
+        
+        # add t_max vertices (only if it wasn't added in the final iteration above, and either v is some v_0r or att_cover_times[v] is non-empty)
+        if prev_t + 1 != ceil(eig.t_max)
+            if !(isempty(att_cover_times[v])) || (v in eig.network.v_0r)
+                push!(new_vs, (v, Int(ceil(eig.t_max))))
             end
         end
     end
-    # # take care of i=0 case, so adding arcs (v_0r, 0)(v, j) - ALREADY DONE ABOVE
-    # for v_0r in unique(eig.network.v_0r)
-    #     for v in eig.neighbourhoods[v_0r]
-    #         if v == v_inf
-    #             continue
-    #         end
-            
-    #         j = div(eig.dist_mtx[v_0r, v], eig.speed_D)
+    
+    push!(new_vs, sink_node)
+    
+    sort!(new_vs, by = x -> x[2])  # sort new_vs by time-coordinate; NOTE: source_node is first, sink_node is last
+    # sort!(new_vs_just_before_cover, by = x -> x[2])
+    
+    num_nodes_new_graph = length(new_vs)  # note we know no other vertex should be created (unlike the attacker network)
+    if printing
+        println("Constructed defender graph vertices: $num_nodes_new_graph")
+        display(new_vs)
+    end
 
-    #         if j ≤ ceil(eig.t_max)
-    #             j = Int(j)
-    #             push!(arc_lists_o[(v_0r, 0)], (v, j))
-    #             push!(arc_lists_i[(v, j)], (v_0r, 0))
+    is_new_vs_just_before_cover = Dict(node => false for node in new_vs)  # indexed by new_vs (v, t); true if (v, t+0.5) is att-covered, false otherwise
+    is_new_vs_just_after_cover = Dict(node => false for node in new_vs)  # indexed by new_vs (v, t); true if (v, t-0.5) is att-covered, false otherwise
+
+    # determine is_new_vs_just_before_cover and is_new_vs_just_after_cover
+    for v in nodes_1 
+        for t in att_cover_times[v]
+            # handle vertices 'surrounding' the attacker cover point (recall t+0.5 is the time that the attacker actually arrives at v)
+            is_new_vs_just_before_cover[(v, t)] = true
+            is_new_vs_just_after_cover[(v, t + 1)] = true
+        end
+
+        # note an attacker cover can only take place at some half-int between 0 and ceil(eig.t_max)
+    end
+
+    if printing
+        println("is_new_vs_just_before_cover:")
+        display(is_new_vs_just_before_cover)
+        println("is_new_vs_just_after_cover:")
+        display(is_new_vs_just_after_cover)
+    end
+    
+    # draw edges
+    arc_lists_i = Dict(node => [] for node in new_vs)  # incoming arcs, indexed by each new_vs
+    arc_lists_o = Dict(node => [] for node in new_vs)  # outgoing arcs, indexed by each new_vs
+    out_expecting_node_times = [Int[] for _ in nodes_1]  # indexed by nodes_1,
+        # vth entry is the current list of times t in chronological order for which we have already computed all incoming edges for (v, t) and are expecting/ready
+        # to draw an outgoing arc.
+        # Note we store the t value such that (v, t-0.5) is attacker-covered (since then (v, t) is the node for which we will draw outgoing arcs)
+    most_recent_processed_node_times = [-1 for _ in nodes_1]  # indexed by nodes_1, gives the time t of the most recently processed (v, t) in new_vs
+        # -1 by default (meaning no node pair (v, t) in new_vs has been processed yet)
+    
+    # draw source_node edges
+    for v_0r in unique(eig.network.v_0r)  # ensure each resource-initial node is only done once
+        start_v = (v_0r, 0)
+        push!(arc_lists_o[source_node], start_v)
+        push!(arc_lists_i[start_v], source_node)
+        
+        push!(out_expecting_node_times[v_0r], 0)  # we will draw arcs out of (v_0r, 0)
+        most_recent_processed_node_times[v_0r] = 0
+        
+        if printing
+            println("Added source arc to $start_v")
+        end
+    end
+    
+    # draw internal arcs and sink_node arcs; iterate through new_vs in chronological order
+    for node_time_pair in new_vs[2:end-1]  # (v, t); avoid source and sink nodes (guaranteed to be first and last of new_vs if new_vs is sorted)
+    # for node_time_pair in new_vs_just_before_cover  # (v, t)
+        @assert(node_time_pair != source_node, "node_time_pair should not be source_node when drawing internal edges for def graph")
+        @assert(node_time_pair != sink_node, "node_time_pair should not be sink_node when drawing internal edges for def graph")
+
+        v = node_time_pair[1]
+        t = node_time_pair[2]
+        
+        @assert(isinteger(t), "t = $t should be an integer")
+        # @assert(t != 0, "t should not be 0 (an attacker should never be able to cover time 0.5)")
+
+        if t == 0
+            @assert(v in eig.network.v_0r)
+            continue  # process resource-inital nodes separately (done above)
+        end
+        
+        # add arc (v, t') -> (v, t) for latest t' such that (v, t') has already been processed
+        if most_recent_processed_node_times[v] != -1
+            tail_node = (v, most_recent_processed_node_times[v])
+            push!(arc_lists_o[tail_node], node_time_pair)
+            push!(arc_lists_i[node_time_pair], tail_node)
+
+            if printing
+                println("  Added waiting arc $tail_node -> $node_time_pair")
+            end
+        end
+        
+        if t == ceil(eig.t_max)  # WARNING: this will never trigger in the for-loop if using new_vs_just_before_cover
+            # only draw the incoming 'waiting' edge from the latest time in in_complete_node_times[v] (done above) and the sink edges
+            if !isempty(out_expecting_node_times[v])  # if empty, then v is not some v_0r and no attacker was covering 
+                # draw sink_node edges
+                push!(arc_lists_o[node_time_pair], sink_node)
+                push!(arc_lists_i[sink_node], node_time_pair)
+
+                if printing
+                    println("Added sink arc from $node_time_pair")
+                end
+            else
+                if printing
+                    println("    !!!! FOUND NON-V_0R NON-ATTACKER-COVERED VERTEX $v IN MAIN LOOP OF CONSTRUCTING DEFENDER ARCS")
+                end
+            end
+
+            # TODO: include t (=ceil(t_max)) in out_expecting_node_times?
+            continue  # no other arcs
+        end
+        
+        if is_new_vs_just_before_cover[node_time_pair]
+            # draw incoming arcs to (v, t) (corresponds with shortest paths ending at v)
+            for w in nodes_1
+                if w == v
+                    continue  # handle waiting arcs separately
+                end
+                
+                if !isempty(out_expecting_node_times[w])
+                    # there is some (w, t) that is ready to have an outgoing arc, so add some arc if defender can make it from w to v in time to cover (v, t + 0.5)
+                    travel_time_wv = eig.dist_mtx[w, v] / eig.speed_D
+    
+                    flag_break = false  # true if we break out of the following for-loop, false otherwise
+                    
+                    for idx in length(out_expecting_node_times[w]) : -1 : 1  # iterate in reverse order to find the latest time that fits
+                        time_w = out_expecting_node_times[w][idx]
+                        if t < time_w + travel_time_wv
+                            continue  # defender cannot make it from w to v in time to cover (v, t + 0.5)
+                        end
+                        
+                        tail_node = (w, time_w)
+                        if !is_new_vs_just_after_cover[tail_node] && time_w > 0
+                            continue  # shouldn't draw outgoing arcs from nodes that aren't just after an attacker cover (unless it's a waiting arc or its from time 0)
+                        end
+                        
+                        # t >= time_w + travel_time_wv, so draw arc (w, time_w) -> (v, t)
+                        push!(arc_lists_o[tail_node], node_time_pair)
+                        push!(arc_lists_i[node_time_pair], tail_node)
+    
+                        if printing
+                            println("  Added arc $tail_node -> $node_time_pair; note out_expecting_node_times[$w] = $(out_expecting_node_times[w]) and travel_time_wv = $travel_time_wv")
+                        end
+                        flag_break = true
+                        break  # only one arc per w
+                    end
+                    
+                    if !flag_break
+                        # if no arc was constructed, that is okay?
+                        if printing
+                            println("    !!!! No arc ($w, ?) -> $node_time_pair; note out_expecting_node_times[$w] = $(out_expecting_node_times[w]) and travel_time_wv = $travel_time_wv")
+                        end
+                    end
+                end
+            end
+        end
+
+        # # add arc (v, t) -> (v, t+1) only if it will cover some att strat - Actually, this is taken care of in the 'normal' waiting arcs??
+        # @assert(t < ceil(eig.t_max), "t = $t should be < ceil(eig.t_max) = $(ceil(eig.t_max))")
+        # head_node = (v, t + 1)
+        # push!(arc_lists_o[node_time_pair], head_node)
+        # push!(arc_lists_i[head_node], node_time_pair)
+        
+        if is_new_vs_just_after_cover[node_time_pair]
+            push!(out_expecting_node_times[v], t)  # it makes sense to have an outgoing arc
+        end
+        most_recent_processed_node_times[v] = t
+    end
+    
+    # # draw arcs for t_max nodes
+    # for v in nodes_1
+    #     # only draw the incoming 'waiting' edge from the latest time in in_complete_node_times[v]
+    #     if most_recent_processed_node_times[v] != -1  # if -1, then v is not some v_0r and no attacker was covering
+    #         t_max_node = (v, ceil(eig.t_max))
+            
+    #         # add arc (v, t') -> (v, t) for latest t' such that (v, t') has already been processed
+    #         tail_node = (v, most_recent_processed_node_times[v])
+    #         push!(arc_lists_o[tail_node], t_max_node)
+    #         push!(arc_lists_i[t_max_node], tail_node)
+            
+    #         # draw sink_node edges
+    #         push!(arc_lists_o[t_max_node], sink_node)
+    #         push!(arc_lists_i[sink_node], t_max_node)
+    #         if printing
+    #             println("Added t_max waiting arc $tail_node -> $t_max_node")
+    #             println("Added sink arc from $t_max_node")
     #         end
     #     end
     # end
-    
-    # draw B3 arcs
-    for v in nodes_1
-        for i in minimum(div(eig.dist_mtx[v_0r, v], eig.speed_D) for v_0r in eig.network.v_0r ) + eig.δ : ceil(eig.t_max)
-            # add (v, i - eig.δ)(v, i); note the start idx for i is so that (v, i - eig.δ) actually exists
-            
-            i = Int(i)
 
-            push!(arc_lists_o[(v, i - eig.δ)], (v, i))
-            push!(arc_lists_i[(v, i)], (v, i - eig.δ))
-        end
-    end
-    # # take care of i=1 case, so adding arcs (v_0r, 0)(v_0r, eig.δ)
-    # for v_0r in unique(eig.network.v_0r)
-    #     push!(arc_lists_o[(v_0r, 0)], (v_0r, eig.δ))
-    #     push!(arc_lists_i[(v_0r, eig.δ)], (v_0r, 0))
-    # end
-    
-    # draw B4 arcs
-    i_strt1 = ceil(eig.t_max) - eig.δ
-    for v in nodes_1
-        # i must satisfy ceil(eig.t_max) - eig.δ <= i && minimum(div(eig.dist_mtx[v_0r, v], eig.speed_D) for v_0r in eig.network.v_0r ) <= i
-        i_strt2 = minimum(div(eig.dist_mtx[v_0r, v], eig.speed_D) for v_0r in eig.network.v_0r )
-        
-        i_strt = i_strt1 > i_strt2 ? i_strt1 : i_strt2
-        for i in i_strt:ceil(eig.t_max)
-            
-            i = Int(i)
-            push!(arc_lists_o[(v, i)], sink_node)
-            push!(arc_lists_i[sink_node], (v, i))
-            
-            # if minimum(eig.dist_mtx[v_0r, v] for v_0r in eig.network.v_0r ) <= i
-            #     push!(arc_lists_o[(v, i)], sink_node)
-            #     push!(arc_lists_i[sink_node], (v, i))
-            # end
-        end
+    # TODO: include t (=ceil(t_max)) in out_expecting_node_times?
+    num_edges = sum(length(arc_lists_o[new_v]) for new_v in new_vs)
+    if printing
+        println("Constructed defender edges: $num_edges edges")
     end
     
     return (new_vs=new_vs, arc_lists_o=arc_lists_o, arc_lists_i=arc_lists_i, source_node=source_node, sink_node=sink_node)
 end
 
 # +
-function defenderoraclenew(eig::EIG, att_strats_, att_probs, new_graph, optimiser=Gurobi.Optimizer; timeout=60.0, silent=true)
+function defenderoraclenew(eig::EIG, att_strats_, att_probs; optimiser=Gurobi.Optimizer, timeout=60.0, silent=true)
     """
     Given available attacker strategies, finds an optimal pure defender strategy.
     
     att_strats: list of available attacker strategies
     """
+    @assert(eig.δ == 1, "Delta should be 1 but it is $(eig.δ)")
+    
     att_strats = [att_strat_to_A_half_strat(eig.dist_mtx, att_strat, eig.speed_A) for att_strat in att_strats_]  # convert all att_strats to A_{1/2} strat
+
+    att_supp = []  # att strats in the current support 
+    att_supp_probs = []  # att strats in the current support
+
+    for (idx, s) in enumerate(att_strats)
+        if att_probs[idx] > 0
+            push!(att_supp, s)
+            push!(att_supp_probs, att_probs[idx])
+        end
+    end
     
+    # construct graph (assuming DELTA == 1?)
+    time_new_graph_construction = @elapsed new_graph = constructdefenderoraclegraph_SUPPBASED(eig, att_strats=att_supp)
+    num_nodes_new_graph = length(new_graph.new_vs)
+    num_edges_new_graph = sum(length(new_graph.arc_lists_o[new_v]) for new_v in new_graph.new_vs)
     
-    # construct graph (assuming DELTA == 1?, use half-delta values?)
     # HALF_INTS = [i - 1/2 for i=1:Int(ceil(eig.t_max))]  # does not contain 0 (though 0 gives some vertices in the time-extended network)
     
     nodes = 1:eig.network.num_nodes
@@ -2446,7 +3097,7 @@ function defenderoraclenew(eig::EIG, att_strats_, att_probs, new_graph, optimise
     v_0 = eig.network.v_0
     v_inf = eig.network.v_∞
     
-    new_vs = new_graph.new_vs  # vertices (all of the form (v, i, b), where v is a node, i is 0 or a half-integer, b is -1 or 1)
+    new_vs = new_graph.new_vs  # vertices (all of the form (v, i), where v is a node, i is 0 or a positive integer)
     
     # arcs, represented as an adjacency list for each vertex
     arc_lists_o = new_graph.arc_lists_o  # arcs going out from each vertex
@@ -2470,41 +3121,65 @@ function defenderoraclenew(eig::EIG, att_strats_, att_probs, new_graph, optimise
     #     end
     # end
 
-    # finally, we define ind_xvi_full as the indicator for if att strat x is on node v at *any time* within [i - eig.delta, i]
-    ind_xvi_full = [0 for x in att_strats, v in nodes, i in 1:ceil(eig.t_max)]  # assume 0 until we can find a counterexample
-    for (x_idx, x) in enumerate(att_strats)
-        # process schedule and trigger appropriate indicators if a counterexample is found
-        for state in x[2:end]  # don't check (v_0, 0) state (defender will never be there by assumption)
-            for i in floor(state.t):ceil(state.t) + eig.δ  # note state.t is a half-int
-                if i - eig.δ <= state.t <= i <= ceil(eig.t_max)
-                    ind_xvi_full[x_idx, state.v, Int(i)] = 1  # state.t in [i - eig.delta, i]
-                    println("???????????? ind_xvi_full[$x_idx, $(state.v), $i] is 1")
-                end
-            end
-        end
-    end
-    
+    # # finally, we define ind_xvi_full as the indicator for if att strat x is on node v at *any time* within [i - eig.delta, i]
+    # ind_xvi_full = [0 for x in att_strats, v in nodes, i in 1:ceil(eig.t_max)]  # assume 0 until we can find a counterexample
+    # for (x_idx, x) in enumerate(att_strats)
+    #     # process schedule and trigger appropriate indicators if a counterexample is found
+    #     for state in x[2:end]  # don't check (v_0, 0) state (defender will never be there by assumption)
+    #         for i in floor(state.t):ceil(state.t) + eig.δ  # note state.t is a half-int
+    #             if i - eig.δ <= state.t <= i <= ceil(eig.t_max)
+    #                 ind_xvi_full[x_idx, state.v, Int(i)] = 1  # state.t in [i - eig.delta, i]
+    #                 # println("???????????? ind_xvi_full[$x_idx, $(state.v), $i] is 1")
+    #             end
+    #         end
+    #     end
+    # end
     
     # form MILP
     LP_DOn = Model(optimiser);
     if silent; set_silent(LP_DOn); end
     
-    @variable(LP_DOn, y[a=new_vs, b=new_vs; b in arc_lists_o[a]] ≥ 0, Int)  # arc flow variables
-    @variable(LP_DOn, z[y=1:length(att_strats)], Bin)  # indicator variable for if att strat x interdicts def strat given by flows
+    @variable(LP_DOn, x[a=new_vs, b=new_vs; b in arc_lists_o[a]] ≥ 0, Int)  # arc flow variables
+    @variable(LP_DOn, z[y=1:length(att_supp)], Bin)  # indicator variable for if att strat y interdicts def strat given by flows
     
-    @constraint(LP_DOn, con1[a=new_vs[1:end-2]], sum( y[b, a] for b in arc_lists_i[a] ) == sum( y[a, c] for c in arc_lists_o[a] ) )  # flow balance at each internal node
+    @assert(new_vs[1] == source_node && new_vs[end] == sink_node, "new_vs[1] must be source_node, and new_vs[end] must be sink_node")
+    
+    @constraint(LP_DOn, con1[a=new_vs[2:end-1]], sum( x[b, a] for b in arc_lists_i[a] ) == sum( x[a, c] for c in arc_lists_o[a] ) )  # flow balance at each internal node
     
     # compute c_r := c_{v_0^r} values
     c_r = counter(eig.network.v_0r)
     unique_rs = unique(eig.network.v_0r)
     
-    @constraint(LP_DOn, con2[r=unique_rs], y[source_node, (r, 0)] == c_r[r] )
-    @constraint(LP_DOn, con3, sum( y[a, sink_node] for a in arc_lists_i[sink_node] ) == length(eig.network.v_0r))
-    @constraint(LP_DOn, con4[x=1:length(att_strats)], z[x] ≤ sum( ind_xvi_full[x, v, i] * y[(v, i - eig.δ), (v, i)]
-            for v in nodes_1, i in Int(minimum(eig.dist_mtx[v_0r, v] / eig.speed_D for v_0r in eig.network.v_0r ) + eig.δ):Int(ceil(eig.t_max))))
-    # + sum( ind_xvi[x, v, 1] * y[(v, 0), (v, 1)] for v in unique_rs) )  # special i_idx = 1 for resource start states - UNNECESSARY, assuming v_0 ∉ v_0r
+    @constraint(LP_DOn, con2[r=unique_rs], x[source_node, (r, 0)] == c_r[r] )
+    @constraint(LP_DOn, con3, sum( x[a, sink_node] for a in arc_lists_i[sink_node] ) == length(eig.network.v_0r))
+
+    # APPROACH: manually find the set of all y[(v, i), (v, i + 1)] that go into the sum for the constaint z[y]
+    new_vs_just_before_cover = [[] for _ in 1:length(att_supp)]  # indexed by att_supp y, the list of (v, i) such that y covers (v, i+0.5)
+    for (att_idx, att_strat) in enumerate(att_supp)
+        # iterate through att_strat, manually adding
+        for state in att_strat[2:end-1]  # skip initial state and end state
+            @assert(state.v != v_inf, "internal state of att strat should not have v_inf: att_strat: $att_strat")
+            
+            vi = (state.v, Int(state.t - 0.5))
+
+            # ensure vi is actually in new_vs (i.e. check distance condition)
+            shortest_r_dist = minimum(div(eig.dist_mtx[v_0r, state.v], eig.speed_D) for v_0r in eig.network.v_0r)
+            if shortest_r_dist > state.t
+                # println("  EXCLUDING vi = $vi: shortest_r_dist = $shortest_r_dist")
+                continue
+            end
+            
+            push!(new_vs_just_before_cover[att_idx], vi)
+        end
+    end
+
+    @constraint(LP_DOn, con4[y=1:length(att_supp)], z[y] ≤ sum( x[(p[1], p[2]), (p[1], p[2] + eig.δ)] for p in new_vs_just_before_cover[y]) )
     
-    @objective(LP_DOn, Max, sum( att_probs[x] * z[x] for x=1:length(att_strats) ))  # prob of interdiction
+    # @constraint(LP_DOn, con4[y=1:length(att_supp)], z[y] ≤ sum( ind_xvi_full[y, v, i] * x[(v, i - eig.δ), (v, i)]
+    #         for v in nodes_1, i in Int(minimum(eig.dist_mtx[v_0r, v] / eig.speed_D for v_0r in eig.network.v_0r ) + eig.δ):Int(ceil(eig.t_max))))
+    # # + sum( ind_xvi[x, v, 1] * y[(v, 0), (v, 1)] for v in unique_rs) )  # special i_idx = 1 for resource start states - UNNECESSARY, assuming v_0 ∉ v_0r
+    
+    @objective(LP_DOn, Max, sum( att_probs[y] * z[y] for y=1:length(att_supp) ))  # prob of interdiction
     
     set_time_limit_sec(LP_DOn, timeout)
 
@@ -2520,7 +3195,13 @@ function defenderoraclenew(eig::EIG, att_strats_, att_probs, new_graph, optimise
             println("Network DO timedout after ", timeout, " secs, but didn't find a feasible point")
             flush(stdout)
             # do something here? Like give it a bit more time to find a feasible point?
-            return nothing, nothing, LP_DOn  # return essentially nothing
+            return (new_def_strat=nothing,
+                obj_value=nothing,
+                LP_DO=LP_DOn,
+                num_nodes_new_graph=num_nodes_new_graph,
+                num_edges_new_graph=num_edges_new_graph,
+                time_new_graph_construction=time_new_graph_construction)
+            # return nothing, nothing, LP_DOn  # return essentially nothing
         elseif primal_status(LP_DOn) == FEASIBLE_POINT
             println("Network DO timedout after ", timeout, " secs, found a feasible point")
             flush(stdout)
@@ -2567,9 +3248,9 @@ function defenderoraclenew(eig::EIG, att_strats_, att_probs, new_graph, optimise
     
     # Only deal with non-zero flows
     curr_flows = DefaultDict(0)
-    for a in new_graph.vs
+    for a in new_graph.new_vs
         for b in new_graph.arc_lists_o[a]
-            temp = value(y[a, b])
+            temp = value(x[a, b])
             if temp > 0
                 curr_flows[(a, b)] = temp
             end
@@ -2577,12 +3258,12 @@ function defenderoraclenew(eig::EIG, att_strats_, att_probs, new_graph, optimise
     end
     
     
-    def_strat = []
+    new_def_strat = [[] for _ in eig.network.v_0r]
     
     while sum(curr_flows[(source_node, b)] for b in arc_lists_o[source_node]) > 0.5
     # while sum(value(y[source_node, b]) for b in arc_lists_o[source_node]) > 0.5
         
-        # find a source-sink path of non-zero flow
+        # find a source-sink path of non-zero flow, and send 1 virtual resource along it
         # min_arc_flow = length(eig.network.v_0r)  # minimum flow encountered along path
         seq_of_nodes = []  # sequence of nodes in time-ext. graph that flows visit
 
@@ -2590,9 +3271,9 @@ function defenderoraclenew(eig::EIG, att_strats_, att_probs, new_graph, optimise
 
         # arcs_to_sub = []  # list of arcs whose flows will be subtracted
         
-        # counter_ = 0
-        while curr_node != sink_node  # !! WARNING, will not cover sink node, but no need since the sink node here does not correspond with a node in the og graph
-        # while curr_node != sink_node && counter_ < 100  # !! WARNING, will not cover sink node, but no need since the sink node here does not correspond with a node in the og graph
+        counter_ = 0
+        # while curr_node != sink_node  # !! WARNING, will not cover sink node, but no need since the sink node here does not correspond with a node in the og graph
+        while curr_node != sink_node && counter_ < 1000  # !! WARNING, will not cover sink node, but no need since the sink node here does not correspond with a node in the og graph
             # find flow from (curr_node, curr_time, 1)
             for node in arc_lists_o[curr_node]
                 if curr_flows[(curr_node, node)] > 0.5  # greedily select first outgoing arc with positive flow
@@ -2614,7 +3295,7 @@ function defenderoraclenew(eig::EIG, att_strats_, att_probs, new_graph, optimise
                     curr_flows[(curr_node, node)] -= 1
                     curr_node = node
                     
-                    break;  # next half_int
+                    break;  # next in inner while-loop
                 end
             end
             
@@ -2625,7 +3306,7 @@ function defenderoraclenew(eig::EIG, att_strats_, att_probs, new_graph, optimise
             #     break;
             # end
             
-            # counter_ += 1
+            counter_ += 1
         end
         
         # println("DONE COUNTER, counter_ = $counter_")
@@ -2649,39 +3330,59 @@ function defenderoraclenew(eig::EIG, att_strats_, att_probs, new_graph, optimise
         # println("seq_of_nodes is:")
         # display(seq_of_nodes)
         
-        # extract resource schedule from seq_of_nodes
+        # extract resource schedule from seq_of_nodes. e.g. seq_of_nodes = [(4, 0), (7, 5), (2, 6), (2, 9), (3, 18), SINK]
         res_schd = []  # resource schedule (so int times); start at some (v_0r, 0, t^+)  (use float for type consistency)
-        curr_vertex = seq_of_nodes[1][1]  # first entry is 
-        curr_time = 0
-        last_arrival_time = 0
+        curr_vertex = seq_of_nodes[1][1]  # first entry is node
+        # depart_time = 0  # departure time of the current state (to be computed)
+        arrival_time = 0  # arrival time of the current state (to be computed)
         
         for node_s in seq_of_nodes[1:end-1]  # node_s is of the form (v, t); exclude sink_node
-            if node_s[1] == curr_vertex
-                curr_time += 1
-            else
-                # new node change; first update res_schd
-                push!(res_schd, (v=curr_vertex, t_a=last_arrival_time, t_b=curr_time - 1))
+            if node_s[1] != curr_vertex
+                # have bias towards waiting at the curr_vertex for longer, if node_s[2] is greater than depart_time + d(curr_vertex, node_s[1]) / s_D
+                biased_depart_time = node_s[2] - eig.dist_mtx[curr_vertex, node_s[1]] / eig.speed_D  # wait as long as possible, then go max speed to reach the next node in time
                 
-                # update
+                push!(res_schd, (v=curr_vertex, t_a=arrival_time, t_b=biased_depart_time))
+                
+                # update vertex and arrival time
                 curr_vertex = node_s[1]
-                last_arrival_time = node_s[2]
-                curr_time = node_s[2] + 1
+                arrival_time = node_s[2]
             end
         end
         
         # add last state
-        push!(res_schd, (v=curr_vertex, t_a=last_arrival_time, t_b=Int(ceil(eig.t_max))))
+        push!(res_schd, (v=curr_vertex, t_a=arrival_time, t_b=Int(ceil(eig.t_max))))
         
         # println("ADDING SCHEDULE:")
         # display(res_schd)
         
-        push!(def_strat, res_schd)  # place resource schedule into defender strategy
+        # push!(new_def_strat, res_schd)  # place resource schedule into defender strategy
+
+        # ensure new_def_strat[r] starts at eig.network.v_0r[r]  (maybe this is assumed somewhere in the code, can't remember)
+        flag_successful = false
+        for (idx, res_node) in enumerate(eig.network.v_0r)
+            if isempty(new_def_strat[idx]) && res_schd[1].v == res_node
+                new_def_strat[idx] = res_schd
+                flag_successful = true
+                break
+            end
+        end
+
+        if !flag_successful
+            error("Oh no, we couldn't insert the new resource schedule into new_def_strat. new_def_strat: $new_def_strat and res_schd = $res_schd")
+        end
         
     end  # endwhile
     
     obj_value = objective_value(LP_DOn)
     
-    return def_strat, obj_value, LP_DOn
+    # return def_strat, obj_value, LP_DOn
+
+    return (new_def_strat=new_def_strat,
+        obj_value=obj_value,
+        LP_DO=LP_DOn,
+        num_nodes_new_graph=num_nodes_new_graph,
+        num_edges_new_graph=num_edges_new_graph,
+        time_new_graph_construction=time_new_graph_construction)
 end
 # -
 
@@ -2742,6 +3443,8 @@ function getEIGfromfile(filepath; use_orig_t_max=true, t_max_offset=0.75, force_
     v_∞ = data_v_∞[1].col1  # single int
     T_MAX = data_t_max[1].col1 * speed_lcm  # single int. SPEED ADJUSTING: scale by lcm(s_A, s_D)
 
+    @assert(num_nodes == v_∞, "num_nodes should be equal to v_inf: filepath=$filepath")
+    
     # DONT adjust speeds ()
     speed_D = data_speed_D
     speed_A = data_speed_A
@@ -2880,6 +3583,8 @@ function run_all_trials_and_write_results(;total_timeout_zh=300, total_timeout_n
         end
     end
 end
+
+# T_MAX_OFFSETS_CS_LIST = [75, 1075, 2075, 3075]  # list of t_max offsets (centiseconds) used 
 
 # ## ------------------------------ MAIN ------------------------------ (run individual grid-trial pair)
 # usage: EIG_Notebook.jl <total_timeout for each oracle int> <t_max_offset int> <use_orig_t_max bool> <grid_size> <trial_num>
