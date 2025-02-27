@@ -37,7 +37,7 @@
 # using Distributions
 using JuMP
 using Gurobi
-using Plots
+# using Plots
 using DataStructures  # binary heap for Dijkstra's Algorithm, default dictionary
 # using Formatting
 using CSV  # for CSV reading (input)
@@ -537,319 +537,320 @@ end
 
 # #### Visualisation
 
-function drawEIGgraph(eig::EIG; arrow_size=0.03, arrow_os=0.2, width)
-    my_plot = plot(;aspect_ratio=:equal)  # init plot with nothing
+# +
+# function drawEIGgraph(eig::EIG; arrow_size=0.03, arrow_os=0.2, width)
+#     my_plot = plot(;aspect_ratio=:equal)  # init plot with nothing
         
-    # plot edges
-    for edge in eig.network.edges
+#     # plot edges
+#     for edge in eig.network.edges
         
-        if edge.b == eig.network.v_∞
-            continue  # don't plot v_∞ node
-        end
+#         if edge.b == eig.network.v_∞
+#             continue  # don't plot v_∞ node
+#         end
         
-        # convert int to pair representation for nodes
-        xa, ya = node_int_to_pair(edge.a, width)
-        xb, yb = node_int_to_pair(edge.b, width)
+#         # convert int to pair representation for nodes
+#         xa, ya = node_int_to_pair(edge.a, width)
+#         xb, yb = node_int_to_pair(edge.b, width)
         
-        xs = [xa, xb]
-        ys = [ya, yb]
+#         xs = [xa, xb]
+#         ys = [ya, yb]
         
-        plot!(xs, ys; line=(1, :black, :solid), marker=(:circle, :black, 1), label="")
+#         plot!(xs, ys; line=(1, :black, :solid), marker=(:circle, :black, 1), label="")
         
-        # draw directed arrowheads
-        if ya == yb
-            # horizontal edge
-            if xa < xb
-                # arrow pointing right
-                plot!([xa + arrow_os - arrow_size, xa + arrow_os], [ya + arrow_size, ya]; line=(1, :black, :solid), label="")
-                plot!([xa + arrow_os - arrow_size, xa + arrow_os], [ya - arrow_size, ya]; line=(1, :black, :solid), label="")
+#         # draw directed arrowheads
+#         if ya == yb
+#             # horizontal edge
+#             if xa < xb
+#                 # arrow pointing right
+#                 plot!([xa + arrow_os - arrow_size, xa + arrow_os], [ya + arrow_size, ya]; line=(1, :black, :solid), label="")
+#                 plot!([xa + arrow_os - arrow_size, xa + arrow_os], [ya - arrow_size, ya]; line=(1, :black, :solid), label="")
                 
-            else
-                # arrow pointing left
-                plot!([xa - arrow_os + arrow_size, xa - arrow_os], [ya + arrow_size, ya]; line=(1, :black, :solid), label="")
-                plot!([xa - arrow_os + arrow_size, xa - arrow_os], [ya - arrow_size, ya]; line=(1, :black, :solid), label="")
-            end
-        elseif xa == xb
-            # vertical edge
-            if ya < yb
-                # arrow pointing up
-                plot!([xa - arrow_size, xa], [ya + arrow_os - arrow_size, ya + arrow_os]; line=(1, :black, :solid), label="")
-                plot!([xa + arrow_size, xa], [ya + arrow_os - arrow_size, ya + arrow_os]; line=(1, :black, :solid), label="")
-            else
-                # arrow pointing down
-                plot!([xa - arrow_size, xa], [ya - arrow_os + arrow_size, ya - arrow_os]; line=(1, :black, :solid), label="")
-                plot!([xa + arrow_size, xa], [ya - arrow_os + arrow_size, ya - arrow_os]; line=(1, :black, :solid), label="")
-            end
-        else
-            # diagonal edge
-            if xa < xb
-                if ya < yb
-                    # point up-right
-                    plot!([xa + arrow_os - arrow_size, xa + arrow_os], [ya + arrow_os, ya + arrow_os]; line=(1, :black, :solid), label="")
-                    plot!([xa + arrow_os, xa + arrow_os], [ya + arrow_os - arrow_size, ya + arrow_os]; line=(1, :black, :solid), label="")
-                else
-                    # point down-right
-                    plot!([xa + arrow_os - arrow_size, xa + arrow_os], [ya - arrow_os, ya - arrow_os]; line=(1, :black, :solid), label="")
-                    plot!([xa + arrow_os, xa + arrow_os], [ya - arrow_os + arrow_size, ya - arrow_os]; line=(1, :black, :solid), label="")
+#             else
+#                 # arrow pointing left
+#                 plot!([xa - arrow_os + arrow_size, xa - arrow_os], [ya + arrow_size, ya]; line=(1, :black, :solid), label="")
+#                 plot!([xa - arrow_os + arrow_size, xa - arrow_os], [ya - arrow_size, ya]; line=(1, :black, :solid), label="")
+#             end
+#         elseif xa == xb
+#             # vertical edge
+#             if ya < yb
+#                 # arrow pointing up
+#                 plot!([xa - arrow_size, xa], [ya + arrow_os - arrow_size, ya + arrow_os]; line=(1, :black, :solid), label="")
+#                 plot!([xa + arrow_size, xa], [ya + arrow_os - arrow_size, ya + arrow_os]; line=(1, :black, :solid), label="")
+#             else
+#                 # arrow pointing down
+#                 plot!([xa - arrow_size, xa], [ya - arrow_os + arrow_size, ya - arrow_os]; line=(1, :black, :solid), label="")
+#                 plot!([xa + arrow_size, xa], [ya - arrow_os + arrow_size, ya - arrow_os]; line=(1, :black, :solid), label="")
+#             end
+#         else
+#             # diagonal edge
+#             if xa < xb
+#                 if ya < yb
+#                     # point up-right
+#                     plot!([xa + arrow_os - arrow_size, xa + arrow_os], [ya + arrow_os, ya + arrow_os]; line=(1, :black, :solid), label="")
+#                     plot!([xa + arrow_os, xa + arrow_os], [ya + arrow_os - arrow_size, ya + arrow_os]; line=(1, :black, :solid), label="")
+#                 else
+#                     # point down-right
+#                     plot!([xa + arrow_os - arrow_size, xa + arrow_os], [ya - arrow_os, ya - arrow_os]; line=(1, :black, :solid), label="")
+#                     plot!([xa + arrow_os, xa + arrow_os], [ya - arrow_os + arrow_size, ya - arrow_os]; line=(1, :black, :solid), label="")
                     
-                end
-            else
-                if ya < yb
-                    # point up-left
-                    plot!([xa - arrow_os + arrow_size, xa - arrow_os], [ya + arrow_os, ya + arrow_os]; line=(1, :black, :solid), label="")
-                    plot!([xa - arrow_os, xa - arrow_os], [ya + arrow_os - arrow_size, ya + arrow_os]; line=(1, :black, :solid), label="")
-                else
-                    # point down-left
-                    plot!([xa - arrow_os + arrow_size, xa - arrow_os], [ya - arrow_os, ya - arrow_os]; line=(1, :black, :solid), label="")
-                    plot!([xa - arrow_os, xa - arrow_os], [ya - arrow_os + arrow_size, ya - arrow_os]; line=(1, :black, :solid), label="")
-                end
-            end
-        end
-    end
+#                 end
+#             else
+#                 if ya < yb
+#                     # point up-left
+#                     plot!([xa - arrow_os + arrow_size, xa - arrow_os], [ya + arrow_os, ya + arrow_os]; line=(1, :black, :solid), label="")
+#                     plot!([xa - arrow_os, xa - arrow_os], [ya + arrow_os - arrow_size, ya + arrow_os]; line=(1, :black, :solid), label="")
+#                 else
+#                     # point down-left
+#                     plot!([xa - arrow_os + arrow_size, xa - arrow_os], [ya - arrow_os, ya - arrow_os]; line=(1, :black, :solid), label="")
+#                     plot!([xa - arrow_os, xa - arrow_os], [ya - arrow_os + arrow_size, ya - arrow_os]; line=(1, :black, :solid), label="")
+#                 end
+#             end
+#         end
+#     end
     
-    # plot exit nodes (nodes having an arc towards v_∞)
-    for exit_node in eig.network.exit_nodes
-        pair_repr = node_int_to_pair(exit_node, width)
-        plot!(pair_repr; marker=(:circle, :blue, 6), label="")
-    end
+#     # plot exit nodes (nodes having an arc towards v_∞)
+#     for exit_node in eig.network.exit_nodes
+#         pair_repr = node_int_to_pair(exit_node, width)
+#         plot!(pair_repr; marker=(:circle, :blue, 6), label="")
+#     end
     
-    # plot attacker start node
-    plot!(node_int_to_pair(eig.network.v_0, width); marker=(:circle, :red, 4), label="")
+#     # plot attacker start node
+#     plot!(node_int_to_pair(eig.network.v_0, width); marker=(:circle, :red, 4), label="")
     
-    # plot defender start nodes
-    for v_0r in eig.network.v_0r
-        pair_repr = node_int_to_pair(v_0r, width)
-        plot!(pair_repr; marker=(:circle, :lightgreen, 4), label="")
-    end
+#     # plot defender start nodes
+#     for v_0r in eig.network.v_0r
+#         pair_repr = node_int_to_pair(v_0r, width)
+#         plot!(pair_repr; marker=(:circle, :lightgreen, 4), label="")
+#     end
     
-    display(my_plot)
-end
+#     display(my_plot)
+# end
 
 # +
-function animateEIGPure(eig::EIG, att_strat, def_strat; arrow_size=0.03, arrow_os=0.2, anim_time=3, fps=30, savefilename="EIG_GIF_EXAMPLE", width)
+# function animateEIGPure(eig::EIG, att_strat, def_strat; arrow_size=0.03, arrow_os=0.2, anim_time=3, fps=30, savefilename="EIG_GIF_EXAMPLE", width)
     
-    num_frames = ceil(Int, anim_time * fps)
+#     num_frames = ceil(Int, anim_time * fps)
     
-    curr_att_num = 1  # attacker state numbers
-    curr_def_nums = fill(1, size(def_strat)[1])  # resource state numbers
+#     curr_att_num = 1  # attacker state numbers
+#     curr_def_nums = fill(1, size(def_strat)[1])  # resource state numbers
     
-    MAX_TIME = eig.t_max  # maximum 'interesting' time in EIG to animate to; choose such that the attacker has entered an exit-node + 1
-    for state in att_strat
-        if state.v in eig.network.exit_nodes
-            MAX_TIME = state.t + 1 # attacker will trivially escape 
-            break;
-        end
-    end
-    
-    
-    # precompute resource paths
-    res_all_paths = [[] for _ in 1:length(def_strat)]  # ith entry is a list of paths, one for each transition between resource states
-    for (j, res) in enumerate(def_strat)
-        # compute paths for this resource res
-        res_paths = []
-
-        for (state_num, state) in enumerate(res[1:end-1])
-            # find path from state_num to state_num+1
-            path = shortest_path(eig, state.v, res[state_num+1].v, scale_divisor=eig.speed_D)
-            push!(res_paths, path)
-        end
-        res_all_paths[j] = res_paths
-    end
-    
-    anim = @animate for i = 1:num_frames
-        # first determine time t elapsed for EIG as a function of i
-        eig_time = i / num_frames * MAX_TIME
-        
-        title_str = string(round(eig_time))
-        
-        plot(;aspect_ratio=:equal, title = "t = $title_str", showaxis = false)  # init plot with nothing; also display EIG-time as title
-        
-        # plot edges
-        for edge in eig.network.edges
-
-            if edge.b == eig.network.v_∞
-                continue  # don't plot v_∞ node
-            end
-
-            # convert int to pair representation for nodes
-            xa, ya = node_int_to_pair(edge.a, width)
-            xb, yb = node_int_to_pair(edge.b, width)
-
-            xs = [xa, xb]
-            ys = [ya, yb]
-
-            plot!(xs, ys; line=(1, :black, :solid), marker=(:circle, :black, 1), label="")
-
-            # draw directed arrowheads
-            if ya == yb
-                # horizontal edge
-                if xa < xb
-                    # arrow pointing right
-                    plot!([xa + arrow_os - arrow_size, xa + arrow_os], [ya + arrow_size, ya]; line=(1, :black, :solid), label="")
-                    plot!([xa + arrow_os - arrow_size, xa + arrow_os], [ya - arrow_size, ya]; line=(1, :black, :solid), label="")
-
-                else
-                    # arrow pointing left
-                    plot!([xa - arrow_os + arrow_size, xa - arrow_os], [ya + arrow_size, ya]; line=(1, :black, :solid), label="")
-                    plot!([xa - arrow_os + arrow_size, xa - arrow_os], [ya - arrow_size, ya]; line=(1, :black, :solid), label="")
-                end
-            elseif xa == xb
-                # vertical edge
-                if ya < yb
-                    # arrow pointing up
-                    plot!([xa - arrow_size, xa], [ya + arrow_os - arrow_size, ya + arrow_os]; line=(1, :black, :solid), label="")
-                    plot!([xa + arrow_size, xa], [ya + arrow_os - arrow_size, ya + arrow_os]; line=(1, :black, :solid), label="")
-                else
-                    # arrow pointing down
-                    plot!([xa - arrow_size, xa], [ya - arrow_os + arrow_size, ya - arrow_os]; line=(1, :black, :solid), label="")
-                    plot!([xa + arrow_size, xa], [ya - arrow_os + arrow_size, ya - arrow_os]; line=(1, :black, :solid), label="")
-                end
-            else
-                # diagonal edge
-                if xa < xb
-                    if ya < yb
-                        # point up-right
-                        plot!([xa + arrow_os - arrow_size, xa + arrow_os], [ya + arrow_os, ya + arrow_os]; line=(1, :black, :solid), label="")
-                        plot!([xa + arrow_os, xa + arrow_os], [ya + arrow_os - arrow_size, ya + arrow_os]; line=(1, :black, :solid), label="")
-                    else
-                        # point down-right
-                        plot!([xa + arrow_os - arrow_size, xa + arrow_os], [ya - arrow_os, ya - arrow_os]; line=(1, :black, :solid), label="")
-                        plot!([xa + arrow_os, xa + arrow_os], [ya - arrow_os + arrow_size, ya - arrow_os]; line=(1, :black, :solid), label="")
-
-                    end
-                else
-                    if ya < yb
-                        # point up-left
-                        plot!([xa - arrow_os + arrow_size, xa - arrow_os], [ya + arrow_os, ya + arrow_os]; line=(1, :black, :solid), label="")
-                        plot!([xa - arrow_os, xa - arrow_os], [ya + arrow_os - arrow_size, ya + arrow_os]; line=(1, :black, :solid), label="")
-                    else
-                        # point down-left
-                        plot!([xa - arrow_os + arrow_size, xa - arrow_os], [ya - arrow_os, ya - arrow_os]; line=(1, :black, :solid), label="")
-                        plot!([xa - arrow_os, xa - arrow_os], [ya - arrow_os + arrow_size, ya - arrow_os]; line=(1, :black, :solid), label="")
-                    end
-                end
-            end
-        end
-
-        # plot exit nodes (nodes having an arc towards v_∞)
-        for exit_node in eig.network.exit_nodes
-            pair_repr = node_int_to_pair(exit_node, width)
-            plot!(pair_repr; marker=(:circle, :blue, 6), label="")
-        end
-        
-        # plot attacker and defenders
-        
-        # println("eig_time= $eig_time") 
-        
-        # check if attacker has arrived at next node yet
-        while curr_att_num < size(att_strat)[1] && eig_time ≥ att_strat[curr_att_num + 1].t
-            # attacker state has changed; update it
-            curr_att_num += 1
-        end
-        
-        # if !(att_strat[curr_att_num].v in eig.network.exit_nodes)  # attacker hasn't reached end node
-        
-        if curr_att_num < size(att_strat)[1] - 1  # attacker hasn't reached an exit node (a 2nd last state must be an exit node)
-            # plot attacker point; find vector from current node to next node, and scale by time
-            t = (eig_time - att_strat[curr_att_num].t) / (att_strat[curr_att_num + 1].t - att_strat[curr_att_num].t)
-            node_a = node_int_to_pair(att_strat[curr_att_num].v, width)
-            node_b = node_int_to_pair(att_strat[curr_att_num + 1].v, width)
-
-            point_to_plot = ((1 - t) .* node_a) .+ (t .* node_b)
-
-            # display(point_to_plot)
-
-            plot!(point_to_plot; marker=(:circle, :red, 4), label="")
-        else
-            # println("curr_att_num= $curr_att_num")
-        end
-
-        # plot defender nodes
-        
-        for (j, res) in enumerate(def_strat)
-            # check if defender resource has left the current node
-            while curr_def_nums[j] < size(res)[1] && eig_time > res[curr_def_nums[j]].t_b
-                # update resource state
-                curr_def_nums[j] += 1
-            end
-            
-            # check if resource is in transit, or at a node
-            
-            if res[curr_def_nums[j]].t_a ≤ eig_time ≤ res[curr_def_nums[j]].t_b
-                # plot stationary resource at node
-                pair_repr = node_int_to_pair(res[curr_def_nums[j]].v, width)
-                plot!(pair_repr; marker=(:circle, :lightgreen, 4), label="")
-            else
-                # TODO, in transit to next node (which may not be a neighbourhood node)
-                
-                # find shortest path from current resource node to next node (currently inefficient - multiple calls for the same )
-                
-                # display(res_all_paths)
-                # display(curr_def_nums)
-                # display(j)
-                
-                res_paths = res_all_paths[j]  # all paths of resource (kth entry is path from state k to k+1)
-                
-                path = res_paths[curr_def_nums[j] - 1]  # current path in transit
-                
-                # find neighbouring nodes in path such that time in path
-                # [(v_0, 0), (v_1, 5), (v_2, 7), (v_3, 10)]
-                
-                # display(path)
-                # display(res[curr_def_nums[j] - 1])
-                
-                edge_start = nothing
-                edge_end = nothing  # node of the end of the edge currently being traversed
-                time_start = 0
-                time_end = eig.t_max
-                for idx in 1:length(path)
-                    if path[idx].t > eig_time - res[curr_def_nums[j] - 1].t_b
-                        # found edge to traverse
-                        
-                        # println("Found idx=", idx, " path[idx].t = ", path[idx].t, " eig_time - res[curr_def_nums[j] - 1].t_b = ", eig_time - res[curr_def_nums[j] - 1].t_b)
-                        # println("eig_time = ", eig_time)
-                        
-                        edge_start = path[idx - 1].v
-                        edge_end = path[idx].v
-                        
-                        time_start = res[curr_def_nums[j] - 1].t_b + path[idx - 1].t  # eig time corresponding to resource being precisely at edge_start
-                        time_end = res[curr_def_nums[j] - 1].t_b + path[idx].t
-                        # println("time_start=$time_start, time_end=$time_end")
-                        break;
-                    end
-                end
-                
-                # plot defender point; find vector from current node to next node, and scale by t (LERP)
-                t = (time_end - eig_time) / (time_end - time_start)
-                
-                if t > 1
-                    println("!!!!!!!!!!!!! t = $t")
-                end
-                
-                # display(t)
-                
-                node_b = node_int_to_pair(edge_start, width)  # !! swapped b with a, but it seems to fix the 'reverse' bug
-                node_a = node_int_to_pair(edge_end, width)
-
-                point_to_plot = ((1 - t) .* node_a) .+ (t .* node_b)
-
-                # display(point_to_plot)
-
-                plot!(point_to_plot; marker=(:circle, :green, 4), label="")
-            end
-        end
-        
-        
-#         for v_0r in eig.network.v_0r
-#             pair_repr = node_int_to_pair(v_0r, width)
-#             plot!(pair_repr; marker=(:circle, :lightgreen, 4), label="")
+#     MAX_TIME = eig.t_max  # maximum 'interesting' time in EIG to animate to; choose such that the attacker has entered an exit-node + 1
+#     for state in att_strat
+#         if state.v in eig.network.exit_nodes
+#             MAX_TIME = state.t + 1 # attacker will trivially escape 
+#             break;
 #         end
-    end
+#     end
     
-    gif(anim, savefilename * ".gif", fps=fps)
     
-    # display(my_plot)
-end
+#     # precompute resource paths
+#     res_all_paths = [[] for _ in 1:length(def_strat)]  # ith entry is a list of paths, one for each transition between resource states
+#     for (j, res) in enumerate(def_strat)
+#         # compute paths for this resource res
+#         res_paths = []
+
+#         for (state_num, state) in enumerate(res[1:end-1])
+#             # find path from state_num to state_num+1
+#             path = shortest_path(eig, state.v, res[state_num+1].v, scale_divisor=eig.speed_D)
+#             push!(res_paths, path)
+#         end
+#         res_all_paths[j] = res_paths
+#     end
+    
+#     anim = @animate for i = 1:num_frames
+#         # first determine time t elapsed for EIG as a function of i
+#         eig_time = i / num_frames * MAX_TIME
+        
+#         title_str = string(round(eig_time))
+        
+#         plot(;aspect_ratio=:equal, title = "t = $title_str", showaxis = false)  # init plot with nothing; also display EIG-time as title
+        
+#         # plot edges
+#         for edge in eig.network.edges
+
+#             if edge.b == eig.network.v_∞
+#                 continue  # don't plot v_∞ node
+#             end
+
+#             # convert int to pair representation for nodes
+#             xa, ya = node_int_to_pair(edge.a, width)
+#             xb, yb = node_int_to_pair(edge.b, width)
+
+#             xs = [xa, xb]
+#             ys = [ya, yb]
+
+#             plot!(xs, ys; line=(1, :black, :solid), marker=(:circle, :black, 1), label="")
+
+#             # draw directed arrowheads
+#             if ya == yb
+#                 # horizontal edge
+#                 if xa < xb
+#                     # arrow pointing right
+#                     plot!([xa + arrow_os - arrow_size, xa + arrow_os], [ya + arrow_size, ya]; line=(1, :black, :solid), label="")
+#                     plot!([xa + arrow_os - arrow_size, xa + arrow_os], [ya - arrow_size, ya]; line=(1, :black, :solid), label="")
+
+#                 else
+#                     # arrow pointing left
+#                     plot!([xa - arrow_os + arrow_size, xa - arrow_os], [ya + arrow_size, ya]; line=(1, :black, :solid), label="")
+#                     plot!([xa - arrow_os + arrow_size, xa - arrow_os], [ya - arrow_size, ya]; line=(1, :black, :solid), label="")
+#                 end
+#             elseif xa == xb
+#                 # vertical edge
+#                 if ya < yb
+#                     # arrow pointing up
+#                     plot!([xa - arrow_size, xa], [ya + arrow_os - arrow_size, ya + arrow_os]; line=(1, :black, :solid), label="")
+#                     plot!([xa + arrow_size, xa], [ya + arrow_os - arrow_size, ya + arrow_os]; line=(1, :black, :solid), label="")
+#                 else
+#                     # arrow pointing down
+#                     plot!([xa - arrow_size, xa], [ya - arrow_os + arrow_size, ya - arrow_os]; line=(1, :black, :solid), label="")
+#                     plot!([xa + arrow_size, xa], [ya - arrow_os + arrow_size, ya - arrow_os]; line=(1, :black, :solid), label="")
+#                 end
+#             else
+#                 # diagonal edge
+#                 if xa < xb
+#                     if ya < yb
+#                         # point up-right
+#                         plot!([xa + arrow_os - arrow_size, xa + arrow_os], [ya + arrow_os, ya + arrow_os]; line=(1, :black, :solid), label="")
+#                         plot!([xa + arrow_os, xa + arrow_os], [ya + arrow_os - arrow_size, ya + arrow_os]; line=(1, :black, :solid), label="")
+#                     else
+#                         # point down-right
+#                         plot!([xa + arrow_os - arrow_size, xa + arrow_os], [ya - arrow_os, ya - arrow_os]; line=(1, :black, :solid), label="")
+#                         plot!([xa + arrow_os, xa + arrow_os], [ya - arrow_os + arrow_size, ya - arrow_os]; line=(1, :black, :solid), label="")
+
+#                     end
+#                 else
+#                     if ya < yb
+#                         # point up-left
+#                         plot!([xa - arrow_os + arrow_size, xa - arrow_os], [ya + arrow_os, ya + arrow_os]; line=(1, :black, :solid), label="")
+#                         plot!([xa - arrow_os, xa - arrow_os], [ya + arrow_os - arrow_size, ya + arrow_os]; line=(1, :black, :solid), label="")
+#                     else
+#                         # point down-left
+#                         plot!([xa - arrow_os + arrow_size, xa - arrow_os], [ya - arrow_os, ya - arrow_os]; line=(1, :black, :solid), label="")
+#                         plot!([xa - arrow_os, xa - arrow_os], [ya - arrow_os + arrow_size, ya - arrow_os]; line=(1, :black, :solid), label="")
+#                     end
+#                 end
+#             end
+#         end
+
+#         # plot exit nodes (nodes having an arc towards v_∞)
+#         for exit_node in eig.network.exit_nodes
+#             pair_repr = node_int_to_pair(exit_node, width)
+#             plot!(pair_repr; marker=(:circle, :blue, 6), label="")
+#         end
+        
+#         # plot attacker and defenders
+        
+#         # println("eig_time= $eig_time") 
+        
+#         # check if attacker has arrived at next node yet
+#         while curr_att_num < size(att_strat)[1] && eig_time ≥ att_strat[curr_att_num + 1].t
+#             # attacker state has changed; update it
+#             curr_att_num += 1
+#         end
+        
+#         # if !(att_strat[curr_att_num].v in eig.network.exit_nodes)  # attacker hasn't reached end node
+        
+#         if curr_att_num < size(att_strat)[1] - 1  # attacker hasn't reached an exit node (a 2nd last state must be an exit node)
+#             # plot attacker point; find vector from current node to next node, and scale by time
+#             t = (eig_time - att_strat[curr_att_num].t) / (att_strat[curr_att_num + 1].t - att_strat[curr_att_num].t)
+#             node_a = node_int_to_pair(att_strat[curr_att_num].v, width)
+#             node_b = node_int_to_pair(att_strat[curr_att_num + 1].v, width)
+
+#             point_to_plot = ((1 - t) .* node_a) .+ (t .* node_b)
+
+#             # display(point_to_plot)
+
+#             plot!(point_to_plot; marker=(:circle, :red, 4), label="")
+#         else
+#             # println("curr_att_num= $curr_att_num")
+#         end
+
+#         # plot defender nodes
+        
+#         for (j, res) in enumerate(def_strat)
+#             # check if defender resource has left the current node
+#             while curr_def_nums[j] < size(res)[1] && eig_time > res[curr_def_nums[j]].t_b
+#                 # update resource state
+#                 curr_def_nums[j] += 1
+#             end
+            
+#             # check if resource is in transit, or at a node
+            
+#             if res[curr_def_nums[j]].t_a ≤ eig_time ≤ res[curr_def_nums[j]].t_b
+#                 # plot stationary resource at node
+#                 pair_repr = node_int_to_pair(res[curr_def_nums[j]].v, width)
+#                 plot!(pair_repr; marker=(:circle, :lightgreen, 4), label="")
+#             else
+#                 # TODO, in transit to next node (which may not be a neighbourhood node)
+                
+#                 # find shortest path from current resource node to next node (currently inefficient - multiple calls for the same )
+                
+#                 # display(res_all_paths)
+#                 # display(curr_def_nums)
+#                 # display(j)
+                
+#                 res_paths = res_all_paths[j]  # all paths of resource (kth entry is path from state k to k+1)
+                
+#                 path = res_paths[curr_def_nums[j] - 1]  # current path in transit
+                
+#                 # find neighbouring nodes in path such that time in path
+#                 # [(v_0, 0), (v_1, 5), (v_2, 7), (v_3, 10)]
+                
+#                 # display(path)
+#                 # display(res[curr_def_nums[j] - 1])
+                
+#                 edge_start = 0
+#                 edge_end = 0  # node of the end of the edge currently being traversed
+#                 time_start = 0
+#                 time_end = eig.t_max
+#                 for idx in 1:length(path)
+#                     if path[idx].t > eig_time - res[curr_def_nums[j] - 1].t_b
+#                         # found edge to traverse
+                        
+#                         # println("Found idx=", idx, " path[idx].t = ", path[idx].t, " eig_time - res[curr_def_nums[j] - 1].t_b = ", eig_time - res[curr_def_nums[j] - 1].t_b)
+#                         # println("eig_time = ", eig_time)
+                        
+#                         edge_start = path[idx - 1].v
+#                         edge_end = path[idx].v
+                        
+#                         time_start = res[curr_def_nums[j] - 1].t_b + path[idx - 1].t  # eig time corresponding to resource being precisely at edge_start
+#                         time_end = res[curr_def_nums[j] - 1].t_b + path[idx].t
+#                         # println("time_start=$time_start, time_end=$time_end")
+#                         break;
+#                     end
+#                 end
+                
+#                 # plot defender point; find vector from current node to next node, and scale by t (LERP)
+#                 t = (time_end - eig_time) / (time_end - time_start)
+                
+#                 if t > 1
+#                     println("!!!!!!!!!!!!! t = $t")
+#                 end
+                
+#                 # display(t)
+                
+#                 node_b = node_int_to_pair(edge_start, width)  # !! swapped b with a, but it seems to fix the 'reverse' bug
+#                 node_a = node_int_to_pair(edge_end, width)
+
+#                 point_to_plot = ((1 - t) .* node_a) .+ (t .* node_b)
+
+#                 # display(point_to_plot)
+
+#                 plot!(point_to_plot; marker=(:circle, :green, 4), label="")
+#             end
+#         end
+        
+        
+# #         for v_0r in eig.network.v_0r
+# #             pair_repr = node_int_to_pair(v_0r, width)
+# #             plot!(pair_repr; marker=(:circle, :lightgreen, 4), label="")
+# #         end
+#     end
+    
+#     gif(anim, savefilename * ".gif", fps=fps)
+    
+#     # display(my_plot)
+# end
 # -
 
 # #### Interdiction Check & CoreLP
@@ -1039,7 +1040,8 @@ end
 
 # #### Zhang et al. Double Oracle
 
-function EIGSzhang!(eig::EIG, att_strats, def_strats; L_max=5, DO=defenderoraclezhang, AO=attackeroraclezhang, max_iters=Inf, printing=1, total_timeout=300, A_timeout=60.0, D_timeout=60.0, silent_solvers=false)
+function EIGSzhang!(eig::EIG, att_strats, def_strats; L_max=5, DO=defenderoraclezhang, AO=attackeroraclezhang, max_iters=Inf, printing=1,
+        total_timeout=300, A_timeout=60.0, D_timeout=60.0, silent_solvers=false)
     """ TODO: bounds given by oracles - actually, just giving the data of the oracle objectives every run is enough (we can compute bounds easily from this data)
     Implements algorithm 1 in the Zhang paper (the main double oracle).
     Given initial attacker and defender strategies, generates new pure strategies until no improving strategies are found
@@ -1055,7 +1057,7 @@ function EIGSzhang!(eig::EIG, att_strats, def_strats; L_max=5, DO=defenderoracle
         0 is no printing whatsoever
         1 is some printing (only initiating LPs, and whether improving strategies are found or not each iteration)
         2 is full printing
-    silent_solvers: Bool for if the LP solvers should be silent or not 
+    silent_solvers: Bool for if the LP solvers should be silent or not
     """
     convergence = false;
     
@@ -1690,15 +1692,57 @@ function defenderoraclezhang(eig::EIG, att_strats, att_probs; L_max=nothing, opt
         LP_DO=LP_DO        
     )
 end
+# -
+
+function convert_att_strat_to_non_backtracking(eig::EIG, att_strat)
+    """
+    Returns an attacker strategy dominating att_strat where no backtracking occurs by removing 'loops' and travelling slower on appropriate arcs
+
+    Not in-place
+    """
+    new_att_strat_no_b = []  # new att strat where there is no backtracking
+    visited_nodes = []
+    
+    successor = Dict(state => att_strat[i+1] for (i, state) in enumerate(att_strat[1:end-1]))  # the 'next' state for each state, will be mutated; (a linked list)
+    most_recent_state_with_node = Dict()  # key is a node v in visited_nodes, value is the state (v, t) earliest in att_strat
+
+    for state in att_strat
+        if state.v in visited_nodes
+            orig_v_state = most_recent_state_with_node[state.v]
+            # delete visited nodes between orig_v_state and state; do it by truncating visited_nodes at the index where state.v is
+            v_idx = findfirst(x -> x == state.v, visited_nodes)
+            visited_nodes = visited_nodes[1:v_idx]
+            
+            # move around successor; A -> ... -> A -> B  ~~~> A -> B
+            successor[orig_v_state] = successor[state]
+        else
+            most_recent_state_with_node[state.v] = state
+            push!(visited_nodes, state.v)
+        end
+    end
+
+    # no more loops, simply traverse successor and push states
+    state_temp = att_strat[1]
+    while state_temp.v != eig.network.v_∞
+        push!(new_att_strat_no_b, state_temp)
+        state_temp = successor[state_temp]
+    end
+
+    push!(new_att_strat_no_b, state_temp)  # push final state
+
+    return new_att_strat_no_b
+end
 
 # +
-function attackeroraclezhang(eig::EIG, def_strats, def_probs; L_max=nothing, optimiser=Gurobi.Optimizer, timeout=60.0, silent=true, printing=0)
+function attackeroraclezhang(eig::EIG, def_strats, def_probs; L_max=nothing, optimiser=Gurobi.Optimizer, timeout=60.0, silent=true, printing=0, no_backtrack_strats=true)
     """
     Given available defender strategies, finds an optimal pure attacker strategy.
     Assumes integral data.
     
     def_strats: list of available defender strategies
     def_probs: list of probabilities of each defender strategy (given by coreLP)
+
+    no_backtrack_strats: If true then, at the end, converts the new attacker strategy to the dominating one where no backtracking occurs by removing 'loops'
     
     nodes, edges, v_0, v_0r, exit_nodes, T_MAX, DELTA
     """
@@ -1751,11 +1795,13 @@ function attackeroraclezhang(eig::EIG, def_strats, def_probs; L_max=nothing, opt
     # </OLD>
     
     # new (29) constraint
-    @constraint(LP_AO, con29a[S=1:length(def_strats), r=1:length(v_0r), i=1:L_max, j=1:length(def_strats[S][r])], - bigM * a[S, r, i, j] ≤ def_strats[S][r][j].t_a - t_a[i] - EPS_)
+    @constraint(LP_AO, con29a[S=1:length(def_strats), r=1:length(v_0r), i=1:L_max, j=1:length(def_strats[S][r])], - bigM * a[S, r, i, j] ≤ def_strats[S][r][j].t_a - t_a[i] - EPS_)  # CORRECT CONSTRAINT
+    # @constraint(LP_AO, con29aW[S=1:length(def_strats), r=1:length(v_0r), i=1:L_max, j=1:length(def_strats[S][r])], - bigM * a[S, r, i, j] ≤ def_strats[S][r][j].t_a - t_a[i])  # WRONG CONSTRAINT (just for experiments)
     @constraint(LP_AO, con29b[S=1:length(def_strats), r=1:length(v_0r), i=1:L_max, j=1:length(def_strats[S][r])], def_strats[S][r][j].t_a - t_a[i] ≤ bigM * (1 - a[S, r, i, j]))
     
     # new (30) constraint
-    @constraint(LP_AO, con30a[S=1:length(def_strats), r=1:length(v_0r), i=1:L_max, j=1:length(def_strats[S][r])], - bigM * b[S, r, i, j] ≤ t_a[i] - def_strats[S][r][j].t_b - EPS_)
+    @constraint(LP_AO, con30a[S=1:length(def_strats), r=1:length(v_0r), i=1:L_max, j=1:length(def_strats[S][r])], - bigM * b[S, r, i, j] ≤ t_a[i] - def_strats[S][r][j].t_b - EPS_)  # CORRECT CONSTRAINT
+    # @constraint(LP_AO, con30aW[S=1:length(def_strats), r=1:length(v_0r), i=1:L_max, j=1:length(def_strats[S][r])], - bigM * b[S, r, i, j] ≤ t_a[i] - def_strats[S][r][j].t_b)  # WRONG CONSTRAINT (just for experiments)
     @constraint(LP_AO, con30b[S=1:length(def_strats), r=1:length(v_0r), i=1:L_max, j=1:length(def_strats[S][r])], t_a[i] - def_strats[S][r][j].t_b ≤ bigM * (1 - b[S, r, i, j]))
     
     @constraint(LP_AO, con31[S=1:length(def_strats), r=1:length(v_0r), i=1:L_max, j=1:length(def_strats[S][r])], z[S] ≥ a[S, r, i, j] + b[S, r, i, j] + A[i, def_strats[S][r][j].v] - 2)
@@ -1805,6 +1851,10 @@ function attackeroraclezhang(eig::EIG, def_strats, def_probs; L_max=nothing, opt
         if vertex == v_inf
             break;  # already at v_inf so no need for anymore states
         end
+    end
+
+    if no_backtrack_strats
+        new_att_strat = convert_att_strat_to_non_backtracking(eig, new_att_strat)
     end
     
     obj_value = objective_value(LP_AO)
@@ -1968,25 +2018,25 @@ end
 
 function att_strat_to_A_half_strat(dist_mtx, att_strat, speed_A; tol=1E-7)
     """
-    Using the construction (Proposition 4.4) in our paper:
-    
+    Using the construction (Proposition 4.4) in our paper.
     """
     # find minimal j such that d(v_j, v_{j+1}) < t_{j+1} - t_j
     j = Inf
     for (i, state) in enumerate(att_strat[1:end-1])
         state_next = att_strat[i+1]
-        if !isapprox(dist_mtx[state.v, state_next.v] / speed_A, state_next.t - state.t)
+        if !isapprox(dist_mtx[state.v, state_next.v] / speed_A, state_next.t - state.t)  # if we code everything right, 
             # (assuming d(v_j, v_{j+1}) / s_A < t_{j+1} - t_j) is false) found j (minimal index with strict inequality)
             j = i
             break
         end
     end
+    @assert(j != Inf, "should have found suitable j in converting att strat to half-int strat: att_strat=$att_strat")
     
     # create half strategy
     new_att_strat = []
     for (i, state) in enumerate(att_strat)
         if isapprox(state.t, round(state.t))
-            # integer time; 
+            # integer time, convert to half-int according to the formula
             new_t = i <= j ? round(state.t) + 0.5 : round(state.t) - 0.5
         else
             new_t = ceil(state.t) - 0.5
@@ -2002,7 +2052,7 @@ end
 
 function def_strat_to_t_max(eig::EIG, def_strat)
     """
-    Returns def_strat, except with t_b in the last state extended to >t_max
+    Returns def_strat, except with t_b in the last state extended to ceil(t_max)
     """
     for res in def_strat
         if res[end].t_b < eig.t_max
@@ -2013,198 +2063,6 @@ function def_strat_to_t_max(eig::EIG, def_strat)
     end
 
     return def_strat
-end
-
-# + jupyter={"source_hidden": true}
-# function constructattackeroraclegraph(eig::EIG)
-#    # construct graph (assuming DELTA == 1?, use half-delta values?)
-#     # HALF_INTS = [i - 1/2 for i=1:ceil(eig.t_max)]  # does not contain 0 (though 0 gives some vertices in the time-extended network)
-    
-#     nodes = 1:eig.network.num_nodes
-#     nodes_1 = 1:eig.network.num_nodes - 1  # all nodes except v_∞
-#     v_0 = eig.network.v_0
-#     v_inf = eig.network.v_∞
-    
-#     # vertices (all of the form (v, i, b), where v is a node, i is 0 or a half-integer, b is -1 or 1)
-#     new_vs = []
-#     # new_vs = [(v, i, b) for v in nodes for i in HALF_INTS for b in [-1, 1]]
-    
-#     # only add vertices (v, i, b) such that the attacker travel time (in the orig. graph) from v_0 to v satisfies dist[v_0, v] / s_A <= i
-#     # and dist[v, v_∞] / s_A + i <= t_max
-#     for v in nodes
-#         d1 = div(eig.dist_mtx[v_0, v], eig.speed_A)
-#         d2 = div(eig.dist_mtx[v, v_inf], eig.speed_A)
-        
-#         # # crude for-loop version, but clear (possible to compute exact start and end values for the loop)
-#         # for i in HALF_INTS
-#         #     if d1 ≤ i && d2 + i ≤ eig.t_max
-#         #         # add (v, i, b)
-#         #         push!(new_vs, (v, i, 1))
-#         #         push!(new_vs, (v, i,-1))
-#         #     end
-#         # end
-        
-#         # add vertices of the form (v, i, b) (range for i is d1 ≤ i ≤ eig.t_max - d2 )
-#         i_half_strt = half_int_ceil(d1)
-#         i_half_end = half_int_floor(eig.t_max - d2)
-#         for i_half_int in i_half_strt:i_half_end
-#             # add (v, i_half_int, b)
-#             push!(new_vs, (v, i_half_int, 1))
-#             push!(new_vs, (v, i_half_int, -1))
-#         end
-#     end
-    
-#     # source and sink nodes
-#     source_node = (v_0, 0, 1)
-#     sink_node = (v_inf, ceil(eig.t_max) - 0.25, -1)  # (contents do not matter, as long as it is guaranteed not to be a key of an internal node 
-    
-#     push!(new_vs, source_node)  # note source and sink are last in new_vs
-#     push!(new_vs, sink_node)
-    
-#     # arcs, represented as an adjacency list for each vertex
-#     arc_lists_o = Dict(node => [] for node in new_vs)  # arcs going out from each vertex
-#     arc_lists_i = Dict(node => [] for node in new_vs)  # arcs going into each vertex
-    
-#     # add edges for v_0 (source node (v_0, 0, +1))
-#     for u in eig.neighbourhoods[v_0]
-#         d1 = div(eig.dist_mtx[v_0, u], eig.speed_A)
-#         d2 = div(eig.dist_mtx[u, v_inf], eig.speed_A)
-        
-#         # for j in HALF_INTS
-#         #     if d1 ≤ j ≤ eig.t_max - d2
-#         #         # node (u, j, b) exists
-#         #         push!(arc_lists_o[source_node], (u, j, -1))
-#         #         push!(arc_lists_i[(u, j, -1)], source_node)
-#         #     end
-#         # end
-
-#         j_half_strt = half_int_ceil(d1)
-#         j_half_end = half_int_floor(eig.t_max - d2)
-#         for j_half_int in j_half_strt:j_half_end  # range is d1 ≤ j_half_int ≤ eig.t_max - d2
-#             # node (u, j, b) exists
-#             push!(arc_lists_o[source_node], (u, j_half_int, -1))
-#             push!(arc_lists_i[(u, j_half_int, -1)], source_node)
-#         end
-#     end
-    
-#     for v in nodes_1  # process original vertices (not v_∞) 
-#         if v == v_0
-#             continue  # skip v_0 (it was processed above)
-#         end
-
-#         # distances for pre-processing out unneeded edges
-#         d1_v = div(eig.dist_mtx[v_0, v], eig.speed_A)
-#         d2_v = div(eig.dist_mtx[v, v_inf], eig.speed_A)
-        
-#         # add A1 arcs
-#         for u in eig.neighbourhoods[v]
-#             # if v > u
-#             #     # already processed u in a previous iteration ???????????????????????????? - IS THIS CORRECT - NO: else this will only construct nodes where v > u
-#             #     continue
-#             # end
-            
-#             if u == v_0
-#                 continue  # attacker should never backtrack, hence no arc 
-#             end
-            
-#             # distances for pre-processing out unneeded edges
-#             d1_u = div(eig.dist_mtx[v_0, u], eig.speed_A)
-#             d2_u = div(eig.dist_mtx[u, v_inf], eig.speed_A)
-#             d_vu = div(eig.dist_mtx[v, u], eig.speed_A)
-            
-#             # add arc (v, i, +1) (u, j -1) iff uv is an arc in the original graph and i + d(v,u) <= j (where i,j are half-ints)
-#             i_half_strt = half_int_ceil(d1_v)
-#             i_half_end = half_int_floor(eig.t_max - d2_v)
-
-#             j_half_strt1 = half_int_ceil(d1_u)
-#             j_half_end = half_int_floor(eig.t_max - d2_u)
-
-#             for i_half_int in i_half_strt:i_half_end  # range is d1_v ≤ i_half_int ≤ t_max - d2_v
-#                 j_half_strt2 = half_int_ceil(i_half_int + d_vu)
-#                 j_half_strt = j_half_strt1 > j_half_strt2 ? j_half_strt1 : j_half_strt2  # OPT: After a certain i_half_int, we always have j_half_strt1 < j_half_strt2
-                
-#                 for j_half_int in j_half_strt:j_half_end  # range is d1_u ≤ j_half_int ≤ t_max - d2_u && i_half_int + d_vu ≤ j_half_int 
-#                     # add arc (v, i, +1) (u, j -1) if i + d(v,u) <= j
-#                     push!(arc_lists_o[(v, i_half_int, 1)], (u, j_half_int,-1))  # !! this seems like a lot of arcs to be explicitly constructing - is there a clever way that exploits symmetry?
-#                     push!(arc_lists_i[(u, j_half_int,-1)], (v, i_half_int, 1))  # !! this seems like a lot of arcs to be explicitly constructing - is there a clever way that exploits symmetry?
-#                 end
-#             end
-            
-            
-#             # # add arc (v, i, +1) (u, j -1) iff uv is an arc in the original graph and i + d(v,u) <= j (where i,j are half-ints)
-#             # for i in HALF_INTS
-#             #     # check if (v, i, ±1) exists (dist[v_0, v] ≤ i && i + dist[v, v_inf] ≤ t_max )
-#             #     if div(eig.dist_mtx[v_0, v], eig.speed_A) > i || i + div(eig.dist_mtx[v, v_inf], eig.speed_A) > eig.t_max
-#             #         continue  # node (v, i, ±1) doesn't exist
-#             #     end
-                
-#             #     for j in HALF_INTS
-#             #         # check if (u, j, ±1) exists
-#             #         if div(eig.dist_mtx[v_0, u], eig.speed_A) > j || j + div(eig.dist_mtx[u, v_inf], eig.speed_A) > eig.t_max
-#             #             continue  # node (u, j, ±1) doesn't exist
-#             #         end
-                    
-#             #         # add arc (v, i, +1) (u, j -1) if i + d(v,u) <= j
-#             #         if i + div(eig.dist_mtx[v, u], eig.speed_A) ≤ j
-#             #             push!(arc_lists_o[(v, i, 1)], (u, j,-1))  # !! this seems like a lot of arcs to be explicitly constructing - is there a clever way that exploits symmetry?
-#             #             push!(arc_lists_i[(u, j,-1)], (v, i, 1))  # !! this seems like a lot of arcs to be explicitly constructing - is there a clever way that exploits symmetry?
-#             #         end
-#             #     end
-#             # end
-#         end
-#     end
-    
-#     # add A2 arcs
-#     for v in nodes
-#         i_half_strt = half_int_ceil(div(eig.dist_mtx[v_0, v], eig.speed_A))
-#         i_half_end = half_int_floor(eig.t_max - div(eig.dist_mtx[v, v_inf], eig.speed_A))
-#         for i_half_int in i_half_strt:i_half_end  # range is d1 ≤ i_half_int ≤ t_max - d2
-#             push!(arc_lists_o[(v, i_half_int,-1)], (v, i_half_int, 1))
-#             push!(arc_lists_i[(v, i_half_int, 1)], (v, i_half_int,-1))
-#         end
-#     end
-    
-#     # add A3 arcs
-#     i_half_strt = half_int_ceil(div(eig.dist_mtx[v_0, v_inf], eig.speed_A))
-#     i_half_end = half_int_floor(eig.t_max)
-#     for i_half_int in i_half_strt:i_half_end
-#         push!(arc_lists_o[(v_inf, i_half_int, 1)], sink_node)
-#         push!(arc_lists_i[sink_node], (v_inf, i_half_int, 1))
-#     end
-    
-#     # # add A3 arcs
-#     # for i in HALF_INTS
-#     #     if i < div(eig.dist_mtx[v_0, v_inf], eig.speed_A)
-#     #         continue
-#     #     end
-        
-#     #     push!(arc_lists_o[(v_inf, i, 1)], sink_node)
-#     #     push!(arc_lists_i[sink_node], (v_inf, i, 1))
-#     # end
-    
-#     return (new_vs=new_vs, arc_lists_o=arc_lists_o, arc_lists_i=arc_lists_i)
-# end
-# -
-
-the_eig = getEIGfromfile(converttrial2filepath(3, 1), t_max_offset=30.75)
-
-# +
-my_res_just_left_times = res_just_left_times = [[] for _ in 1:the_eig.network.num_nodes-1]
-push!(my_res_just_left_times[4], 27)
-push!(my_res_just_left_times[4], 29)
-push!(my_res_just_left_times[6], 19)
-
-
-result = constructattackeroraclegraph_SUPPBASED(the_eig, res_just_left_times=my_res_just_left_times, printing=false)
-# -
-
-display(length(result.new_vs))  # num nodes in attacker network
-sum(length(result.arc_lists_o[new_v]) for new_v in result.new_vs)  # num arcs in attacker network
-
-for new_v in result.new_vs
-    if new_v[1] == 4
-        println("$new_v has \n arc_lists_i = $(result.arc_lists_i[new_v])\n arc_lists_o = $(result.arc_lists_o[new_v])")
-    end
 end
 
 function constructattackeroraclegraph_SUPPBASED(eig::EIG; def_strats=[], res_just_left_times=nothing, printing=false)
@@ -2243,6 +2101,11 @@ function constructattackeroraclegraph_SUPPBASED(eig::EIG; def_strats=[], res_jus
             end
         end
     end
+
+    for x in res_just_left_times
+        unique!(x)  # ensure just-left-time for each node is seen exactly once
+        sort!(x)  # maybe this is useful, maybe not?
+    end
     
     # new_vs = [(v, i, b) for v in nodes for i in HALF_INTS for b in [-1, 1]]
     new_vs = []  # vertices (all of the form (v, i, b), where v is a node, i is 0 or a half-integer, b is -1 or 1)
@@ -2260,17 +2123,17 @@ function constructattackeroraclegraph_SUPPBASED(eig::EIG; def_strats=[], res_jus
     end
     
     # source and sink nodes
-    source_node = (v_0, 0, 1)
+    source_node = (v_0, 0.0, 1)
     sink_node = (v_inf, ceil(eig.t_max) - 0.25, -1)  # (contents do not matter, as long as it is guaranteed not to be a key of an internal node 
     
     # arcs, represented as an adjacency list for each vertex
     arc_lists_o = Dict()  # arcs going out from each vertex (don't initialise with objects, do it uniformly inside the for-loops below)
     # initialise arc_lists_i with empty lists for all vertices (v, t) that are 'oppurtunistic' (i.e. have some def strat covering (v, t - δ) but not (v, t)), since we know these vertices must be processed
     arc_lists_i = Dict((v, half_int_ceil(t), -1) => [] for v in nodes_1 for t in res_just_left_times[v])  # arcs going into each vertex
-    arc_lists_i[sink_node] = Tuple{Int64, Float64, Int64}[]  # initialise for sink node
+    arc_lists_i[sink_node] = []  # initialise for sink node
     
     # process (v_0, 0)
-    arc_lists_o[source_node] = Tuple{Int64, Float64, Int64}[]  # add to dictionary o
+    arc_lists_o[source_node] = []  # add to dictionary o
     for u in eig.neighbourhoods[v_0]
         travel_time = eig.dist_mtx[v_0, u] / eig.speed_A  # an integer, assuming appropriately scaled integral data
         t = half_int_ceil(travel_time)  # round up to nearest half-int (must travel slightly slower, cannot travel faster than max-speed - note our theory guarantees no loss of optimality)
@@ -2322,7 +2185,7 @@ function constructattackeroraclegraph_SUPPBASED(eig::EIG; def_strats=[], res_jus
     end
 
     if printing
-        println("Done processing (v_0, 0) (v_0=$v_0)")
+        println("Done processing (v_0, 0) (v_0=$v_0). outgoing and incoming arcs are resp.:")
         display(arc_lists_o)
         display(arc_lists_i)
     end
@@ -2340,6 +2203,7 @@ function constructattackeroraclegraph_SUPPBASED(eig::EIG; def_strats=[], res_jus
             if printing
                 println("!!!!!!!! SKIPPING ALREADY PROCESSED NODE ($v, $t)")
             end
+            @assert(false, "could have been a duplicate node without the check (v, t, 1) in new_vs. (v, t, 1) = ($v, $t, 1)")
             continue  # already processed (is there a better way that avoids this?)
         end
         
@@ -2350,7 +2214,7 @@ function constructattackeroraclegraph_SUPPBASED(eig::EIG; def_strats=[], res_jus
 
         push!(new_vs_pairless, (v, t))
         
-        arc_lists_o[curr_v] = Tuple{Int64, Float64, Int64}[]  # add to dictionary o
+        arc_lists_o[curr_v] = []  # add to dictionary o
         
         for u in eig.neighbourhoods[v]
             if u == v_0
@@ -2399,7 +2263,7 @@ function constructattackeroraclegraph_SUPPBASED(eig::EIG; def_strats=[], res_jus
             end
 
             if !flag_max_speed_is_opp
-                # add max-speed arc (v, t, 1)(u, t + d(v, u) / s_A, -1
+                # add max-speed arc (v, t, 1)(u, t + d(v, u) / s_A, -1)
                 new_v = (u, t + travel_time, -1)
                 push!(arc_lists_o[curr_v], new_v)
 
@@ -2409,9 +2273,10 @@ function constructattackeroraclegraph_SUPPBASED(eig::EIG; def_strats=[], res_jus
                 end
                 
                 if !haskey(arc_lists_i, new_v)  # maybe there is a smart way to avoid having to do this check?
-                    arc_lists_i[new_v] = Tuple{Int64, Float64, Int64}[]
+                    arc_lists_i[new_v] = []
                     push!(active_vs, new_v)  # add to heap to be processed WARNING: POSSIBLE DUPLICATES?
                 end
+                
                 push!(arc_lists_i[new_v], curr_v)
     
                 # we know new_v is not in new_vs since t + travel_time > t and curr_v has minimal t
@@ -2467,24 +2332,27 @@ function does_def_strat_cover_vt(def_strat, v, t)
 end
 
 # +
-function attackeroraclenew(eig::EIG, def_strats, def_probs; flow_accept_tol=1e-7, optimiser=Gurobi.Optimizer, timeout=60.0, silent=true)
+function attackeroraclenew(eig::EIG, def_strats, def_probs; supp_tol=1e-7, optimiser=Gurobi.Optimizer, timeout=60.0, silent=true, printing=false, no_backtrack_strats=true)
     """
     Given available defender strategies, finds an optimal pure attacker strategy.
     
     def_strats: list of available defender strategies
+    def_probs: list of probabilities resp. for def_strats
+    supp_tol: tolerance for determining whether a def strat is in the support (prob > supp_tol) or not (prob <= supp_tol)
+    no_backtrack_strats: If true then, at the end, converts the new attacker strategy to the dominating one where no backtracking occurs by removing 'loops'
     """
     def_supp = []  # def strats in the current support 
     def_supp_probs = []  # def strats in the current support
 
     for (idx, s) in enumerate(def_strats)
-        if def_probs[idx] > 0
+        if def_probs[idx] > supp_tol
             push!(def_supp, s)
             push!(def_supp_probs, def_probs[idx])
         end
     end
-    
+
     # construct graph
-    time_new_graph_construction = @elapsed new_graph = constructattackeroraclegraph_SUPPBASED(eig, def_strats=def_supp)
+    time_new_graph_construction = @elapsed new_graph = constructattackeroraclegraph_SUPPBASED(eig, def_strats=def_supp, printing=printing)
     num_nodes_new_graph = length(new_graph.new_vs)
     num_edges_new_graph = sum(length(new_graph.arc_lists_o[new_v]) for new_v in new_graph.new_vs)
     
@@ -2619,6 +2487,10 @@ function attackeroraclenew(eig::EIG, def_strats, def_probs; flow_accept_tol=1e-7
         
         # display(curr_node)
     end
+
+    if no_backtrack_strats
+        new_att_strat = convert_att_strat_to_non_backtracking(eig, new_att_strat)
+    end
     
     obj_value = objective_value(LP_AOn)
     
@@ -2629,165 +2501,6 @@ function attackeroraclenew(eig::EIG, def_strats, def_probs; flow_accept_tol=1e-7
         num_edges_new_graph=num_edges_new_graph,
         time_new_graph_construction=time_new_graph_construction)
 end
-
-# + jupyter={"source_hidden": true}
-# function constructdefenderoraclegraph(eig::EIG)
-#    # construct graph (assuming DELTA == 1?, use half-delta values?)
-#     HALF_INTS = [i - 1/2 for i=1:Int(ceil(eig.t_max))]  # does not contain 0 (though 0 gives some vertices in the time-extended network)
-    
-#     nodes = 1:eig.network.num_nodes
-#     nodes_1 = 1:eig.network.num_nodes - 1  # nodes without v_inf
-#     v_0 = eig.network.v_0
-#     v_inf = eig.network.v_∞
-
-#     @assert(nodes[end] == v_inf, "nodes[end] must be v_inf")
-
-#     # vertices (all of the form (v, i, b), where v is a node, i is 0 or a half-integer, b is -1 or 1)
-#     new_vs = []
-#     # new_vs = [(v, i, b) for v in nodes for i in HALF_INTS for b in [-1, 1]]
-    
-#     # only add vertices (v, i) such that the defender travel time t = d(v_0r, v) / s_D (in the orig. graph) from some v_0r to v satisfies t <= i
-#     for v in nodes_1
-#         i_strt = minimum(div(eig.dist_mtx[v_0r, v], eig.speed_D) for v_0r in eig.network.v_0r )
-#         i_end = ceil(eig.t_max)
-#         for i in i_strt:i_end
-#             push!(new_vs, (v, Int(i)))  # defender can reach v within time i
-            
-#             # # exclude if the shortest distance from any v_0r to v is greater than i
-#             # shortest_dist = minimum(div(eig.dist_mtx[v_0r, v], eig.speed_D) for v_0r in eig.network.v_0r )
-
-#             # if shortest_dist <= i
-#             #     push!(new_vs, (v, Int(i)))  # defender can reach v within time i
-#             # end
-#         end
-#     end
-    
-#     # # add (v_0^r, 0) - ALREADY DONE ABOVE
-#     # for v_0r in unique(eig.network.v_0r)  # ensure each resource-initial node is only done once
-#     #     push!(new_vs, (v_0r, 0))
-#     # end
-    
-#     # add R_0 and R_∞ (source and sink), keys don't matter (-1 in left to ensure representation is not in another node)
-#     source_node = (-1, -1)
-#     sink_node = (-1, ceil(eig.t_max) + 2)  # key doesn't matter
-    
-#     push!(new_vs, source_node)
-#     push!(new_vs, sink_node)
-    
-#     # arcs, represented as an adjacency list for each vertex
-#     arc_lists_o = Dict(node => [] for node in new_vs)  # arcs going out from each vertex
-#     arc_lists_i = Dict(node => [] for node in new_vs)  # arcs going into each vertex
-    
-#     # draw B1 arcs
-#     for v_0r in unique(eig.network.v_0r)
-#         push!(arc_lists_o[source_node], (v_0r, 0))
-#         push!(arc_lists_i[(v_0r, 0)], source_node)
-#     end
-    
-#     # draw B2 arcs
-#     for u in nodes_1
-#         for v in eig.neighbourhoods[u]
-#             if v == v_inf
-#                 continue  # defender cannot go to v_∞
-#             end
-#             i_strt = Int(minimum(div(eig.dist_mtx[v_0r, u], eig.speed_D) for v_0r in eig.network.v_0r ))
-#             i_end = Int(ceil(eig.t_max) - div(eig.dist_mtx[u, v], eig.speed_D))
-
-#             # minimum(eig.dist_mtx[v_0r, v] for v_0r in eig.network.v_0r ) ≤ i && i + div(eig.dist_mtx[u, v], eig.speed_D) ≤ ceil(eig.t_max) must be true to add (u,i)(v,j)
-#             for i in i_strt:i_end
-#                 # add (u,i)(v,j)
-#                 j = i + Int(div(eig.dist_mtx[u, v], eig.speed_D))
-                
-#                 push!(arc_lists_o[(u, i)], (v, j))
-#                 push!(arc_lists_i[(v, j)], (u, i))
-
-#                 # note: if u is some v_0r, then i_strt == 0
-#             end
-#         end
-#     end
-#     # # take care of i=0 case, so adding arcs (v_0r, 0)(v, j) - ALREADY DONE ABOVE
-#     # for v_0r in unique(eig.network.v_0r)
-#     #     for v in eig.neighbourhoods[v_0r]
-#     #         if v == v_inf
-#     #             continue
-#     #         end
-            
-#     #         j = div(eig.dist_mtx[v_0r, v], eig.speed_D)
-
-#     #         if j ≤ ceil(eig.t_max)
-#     #             j = Int(j)
-#     #             push!(arc_lists_o[(v_0r, 0)], (v, j))
-#     #             push!(arc_lists_i[(v, j)], (v_0r, 0))
-#     #         end
-#     #     end
-#     # end
-    
-#     # draw B3 arcs
-#     for v in nodes_1
-#         for i in minimum(div(eig.dist_mtx[v_0r, v], eig.speed_D) for v_0r in eig.network.v_0r ) + eig.δ : ceil(eig.t_max)
-#             # add (v, i - eig.δ)(v, i); note the start idx for i is so that (v, i - eig.δ) actually exists
-            
-#             i = Int(i)
-
-#             push!(arc_lists_o[(v, i - eig.δ)], (v, i))
-#             push!(arc_lists_i[(v, i)], (v, i - eig.δ))
-#         end
-#     end
-#     # # take care of i=1 case, so adding arcs (v_0r, 0)(v_0r, eig.δ)
-#     # for v_0r in unique(eig.network.v_0r)
-#     #     push!(arc_lists_o[(v_0r, 0)], (v_0r, eig.δ))
-#     #     push!(arc_lists_i[(v_0r, eig.δ)], (v_0r, 0))
-#     # end
-    
-#     # draw B4 arcs
-#     i_strt1 = ceil(eig.t_max) - eig.δ
-#     for v in nodes_1
-#         # i must satisfy ceil(eig.t_max) - eig.δ <= i && minimum(div(eig.dist_mtx[v_0r, v], eig.speed_D) for v_0r in eig.network.v_0r ) <= i
-#         i_strt2 = minimum(div(eig.dist_mtx[v_0r, v], eig.speed_D) for v_0r in eig.network.v_0r )
-        
-#         i_strt = i_strt1 > i_strt2 ? i_strt1 : i_strt2
-#         for i in i_strt:ceil(eig.t_max)
-            
-#             i = Int(i)
-#             push!(arc_lists_o[(v, i)], sink_node)
-#             push!(arc_lists_i[sink_node], (v, i))
-            
-#             # if minimum(eig.dist_mtx[v_0r, v] for v_0r in eig.network.v_0r ) <= i
-#             #     push!(arc_lists_o[(v, i)], sink_node)
-#             #     push!(arc_lists_i[sink_node], (v, i))
-#             # end
-#         end
-#     end
-    
-#     return (new_vs=new_vs, arc_lists_o=arc_lists_o, arc_lists_i=arc_lists_i, source_node=source_node, sink_node=sink_node)
-# end
-# -
-
-the_eig = getEIGfromfile(converttrial2filepath(6, 1), t_max_offset=30.75)
-
-# +
-# att_cover_times = [[] for _ in 1:the_eig.network.num_nodes-1]
-# push!(att_cover_times[4], 27.5)
-# push!(att_cover_times[4], 29.5)
-# push!(att_cover_times[6], 19.5)
-
-my_att_strat = [(v=the_eig.network.v_0, t=0),
-    (v=4, t=454.5),
-    (v=4, t=404.5),
-    (v=5, t=410.5),
-    (v=6, t=450.5),
-    (v=6, t=461.5)
-]
-
-my_att_strat = [(v=the_eig.network.v_0, t=0),
-    (v=4, t=404.5),
-    (v=4, t=405.5),
-    (v=4, t=406.5),
-    (v=4, t=407.5),
-    (v=5, t=417.5)
-]
-
-result = constructdefenderoraclegraph_SUPPBASED(the_eig, att_strats=[my_att_strat], printing=true)
 # -
 
 function constructdefenderoraclegraph_SUPPBASED(eig::EIG; att_strats=[], att_cover_times=nothing, printing=false)
@@ -2828,6 +2541,7 @@ function constructdefenderoraclegraph_SUPPBASED(eig::EIG; att_strats=[], att_cov
 
     # sort each att_cover_times list (in preparation for avoiding double-pushing to new_vs)
     for x in att_cover_times
+        unique!(x)  # ensure each cover time is used exactly once
         sort!(x)
     end
     
@@ -2847,7 +2561,7 @@ function constructdefenderoraclegraph_SUPPBASED(eig::EIG; att_strats=[], att_cov
     for v_0r in unique(eig.network.v_0r)  # ensure each resource-initial node is only done once
         push!(new_vs, (v_0r, 0))
     end
-
+    
     # add internal vertices and t_max vertices
     for v in nodes_1
         prev_t = -2  # t value in the previous iteration in the following for-loop
@@ -2910,7 +2624,7 @@ function constructdefenderoraclegraph_SUPPBASED(eig::EIG; att_strats=[], att_cov
     arc_lists_o = Dict(node => [] for node in new_vs)  # outgoing arcs, indexed by each new_vs
     out_expecting_node_times = [Int[] for _ in nodes_1]  # indexed by nodes_1,
         # vth entry is the current list of times t in chronological order for which we have already computed all incoming edges for (v, t) and are expecting/ready
-        # to draw an outgoing arc.
+        # to draw an outgoing arc
         # Note we store the t value such that (v, t-0.5) is attacker-covered (since then (v, t) is the node for which we will draw outgoing arcs)
     most_recent_processed_node_times = [-1 for _ in nodes_1]  # indexed by nodes_1, gives the time t of the most recently processed (v, t) in new_vs
         # -1 by default (meaning no node pair (v, t) in new_vs has been processed yet)
@@ -2959,7 +2673,8 @@ function constructdefenderoraclegraph_SUPPBASED(eig::EIG; att_strats=[], att_cov
         
         if t == ceil(eig.t_max)  # WARNING: this will never trigger in the for-loop if using new_vs_just_before_cover
             # only draw the incoming 'waiting' edge from the latest time in in_complete_node_times[v] (done above) and the sink edges
-            if !isempty(out_expecting_node_times[v])  # if empty, then v is not some v_0r and no attacker was covering 
+            if most_recent_processed_node_times[v] != -1  # if -1, then v is not some v_0r and no attacker was covering
+            # if !isempty(out_expecting_node_times[v])  # if empty, then v is not some v_0r and no attacker was covering: THIS IS WRONG, attacker could cover ceil(t_max) - 0.5
                 # draw sink_node edges
                 push!(arc_lists_o[node_time_pair], sink_node)
                 push!(arc_lists_i[sink_node], node_time_pair)
@@ -2970,6 +2685,7 @@ function constructdefenderoraclegraph_SUPPBASED(eig::EIG; att_strats=[], att_cov
             else
                 if printing
                     println("    !!!! FOUND NON-V_0R NON-ATTACKER-COVERED VERTEX $v IN MAIN LOOP OF CONSTRUCTING DEFENDER ARCS")
+                    println("    !!!! out_expecting_node_times[$v] = $(out_expecting_node_times[v])")
                 end
             end
 
@@ -3029,7 +2745,7 @@ function constructdefenderoraclegraph_SUPPBASED(eig::EIG; att_strats=[], att_cov
         # push!(arc_lists_i[head_node], node_time_pair)
         
         if is_new_vs_just_after_cover[node_time_pair]
-            push!(out_expecting_node_times[v], t)  # it makes sense to have an outgoing arc
+            push!(out_expecting_node_times[v], t)  # it makes sense to have an outgoing arc (to some (u, t') where u != v)
         end
         most_recent_processed_node_times[v] = t
     end
@@ -3055,7 +2771,7 @@ function constructdefenderoraclegraph_SUPPBASED(eig::EIG; att_strats=[], att_cov
     #     end
     # end
 
-    # TODO: include t (=ceil(t_max)) in out_expecting_node_times?
+    # TODO: include t (=ceil(t_max)) in out_expecting_node_times for consistency - should we return out_expecting_node_times?
     num_edges = sum(length(arc_lists_o[new_v]) for new_v in new_vs)
     if printing
         println("Constructed defender edges: $num_edges edges")
@@ -3065,28 +2781,30 @@ function constructdefenderoraclegraph_SUPPBASED(eig::EIG; att_strats=[], att_cov
 end
 
 # +
-function defenderoraclenew(eig::EIG, att_strats_, att_probs; optimiser=Gurobi.Optimizer, timeout=60.0, silent=true)
+function defenderoraclenew(eig::EIG, att_strats_, att_probs; supp_tol=1e-7, optimiser=Gurobi.Optimizer, timeout=60.0, silent=true, printing=false)
     """
     Given available attacker strategies, finds an optimal pure defender strategy.
     
     att_strats: list of available attacker strategies
+    att_probs: list of probabilities resp. for att_strats
+    supp_tol: tolerance for determining whether a att strat is in the support (prob > supp_tol) or not (prob <= supp_tol)
     """
     @assert(eig.δ == 1, "Delta should be 1 but it is $(eig.δ)")
     
     att_strats = [att_strat_to_A_half_strat(eig.dist_mtx, att_strat, eig.speed_A) for att_strat in att_strats_]  # convert all att_strats to A_{1/2} strat
 
     att_supp = []  # att strats in the current support 
-    att_supp_probs = []  # att strats in the current support
+    att_supp_probs = []  # att strat probs in the current support
 
     for (idx, s) in enumerate(att_strats)
-        if att_probs[idx] > 0
+        if att_probs[idx] > supp_tol
             push!(att_supp, s)
             push!(att_supp_probs, att_probs[idx])
         end
     end
     
     # construct graph (assuming DELTA == 1?)
-    time_new_graph_construction = @elapsed new_graph = constructdefenderoraclegraph_SUPPBASED(eig, att_strats=att_supp)
+    time_new_graph_construction = @elapsed new_graph = constructdefenderoraclegraph_SUPPBASED(eig, att_strats=att_supp, printing=printing)
     num_nodes_new_graph = length(new_graph.new_vs)
     num_edges_new_graph = sum(length(new_graph.arc_lists_o[new_v]) for new_v in new_graph.new_vs)
     
@@ -3179,7 +2897,7 @@ function defenderoraclenew(eig::EIG, att_strats_, att_probs; optimiser=Gurobi.Op
     #         for v in nodes_1, i in Int(minimum(eig.dist_mtx[v_0r, v] / eig.speed_D for v_0r in eig.network.v_0r ) + eig.δ):Int(ceil(eig.t_max))))
     # # + sum( ind_xvi[x, v, 1] * y[(v, 0), (v, 1)] for v in unique_rs) )  # special i_idx = 1 for resource start states - UNNECESSARY, assuming v_0 ∉ v_0r
     
-    @objective(LP_DOn, Max, sum( att_probs[y] * z[y] for y=1:length(att_supp) ))  # prob of interdiction
+    @objective(LP_DOn, Max, sum( att_supp_probs[y] * z[y] for y=1:length(att_supp) ))  # prob of interdiction
     
     set_time_limit_sec(LP_DOn, timeout)
 
@@ -3479,18 +3197,24 @@ end
 
 # ### Do run of a trial
 
-function do_run_of_trial(grid_size, trial_num; total_timeout_zh=300, total_timeout_ne=300, A_timeout_zh=30, A_timeout_ne=30, D_timeout_zh=30, D_timeout_ne=30, printing=0, silent_solvers=true, t_max_offset=0.75, use_orig_t_max=true)
+function do_run_of_trial_custom(grid_size, trial_num; A_oracle_num=2, D_oracle_num=2, total_timeout=300, A_timeout=30, D_timeout=30, printing=0, silent_solvers=true, t_max_offset=0.75, use_orig_t_max=true)
     """
-    Do a run (both Zhang and network oracles) on a specified example given by grid_size and trial_num
+    Do a run on a specified example given by grid_size and trial_num with specified oracles.
     
     grid_size: Int in [3, 10]
     trial_num: Int in [1, 10]
+    A_oracle_num: Int in {1, 2}. Determines attacker oracle
+        If 1 then Zhang attacker oracle. If 2 then network attacker oracle.
+    D_oracle_num: Int in {1, 2}. Determines defender oracle
+        If 1 then Zhang defender oracle. If 2 then network defender oracle.
     """
     @assert(3 <= grid_size <= 10, "Invalid grid_size")
     @assert(1 <= trial_num <= 10, "Invalid trial_num")
+    @assert(A_oracle_num in [1, 2], "A_oracle_num must be in [1, 2]")
+    @assert(D_oracle_num in [1, 2], "D_oracle_num must be in [1, 2]")
     
-    println("\n!!!!!!!! STARTING grid_size=$grid_size and trial_num=$trial_num")
-    flush(stdout)
+    A_ORACLE_ID_TO_ORACLE = [attackeroraclezhang, attackeroraclenew]
+    D_ORACLE_ID_TO_ORACLE = [defenderoraclezhang, defenderoraclenew]
     
     filepath = converttrial2filepath(grid_size, trial_num)
     the_eig = getEIGfromfile(filepath, t_max_offset=t_max_offset, use_orig_t_max=use_orig_t_max)
@@ -3504,33 +3228,29 @@ function do_run_of_trial(grid_size, trial_num; total_timeout_zh=300, total_timeo
     # network oracles; reset att_strats and def_strats
     att_strats = [att_strat_to_A_half_strat(the_eig.dist_mtx, att_heu_strat, the_eig.speed_A)]
     def_strats = [def_heu_strat]
-    
-    println("!!!!!! STARTING NETWORK DOUBLE ORACLE")
-    flush(stdout)
-    
-    results_ne = @timed EIGSzhang!(the_eig, att_strats, def_strats; DO=defenderoraclenew, AO=attackeroraclenew,
-        total_timeout=total_timeout_ne, A_timeout=A_timeout_ne, D_timeout=D_timeout_ne, printing=printing, silent_solvers=silent_solvers)
-    time_ne = results_ne.time
-    results_ne = results_ne.value
 
-    # Zhang oracles
-    att_strats = [att_heu_strat]
-    def_strats = [def_heu_strat]
-    
-    println("!!!!!! STARTING ZHANG DOUBLE ORACLE")
+    if A_oracle_num == 2 && D_oracle_num == 2
+        println("!!!!!! STARTING grid_size=$grid_size and trial_num=$trial_num NETWORK DOUBLE ORACLE")
+    elseif A_oracle_num == 1 && D_oracle_num == 1
+        println("!!!!!! STARTING grid_size=$grid_size and trial_num=$trial_num ZHANG DOUBLE ORACLE")
+    else
+        println("!!!!!! STARTING grid_size=$grid_size and trial_num=$trial_num CUSTOM DOUBLE ORACLE")
+    end
     flush(stdout)
     
-    results_zh = @timed EIGSzhang!(the_eig, att_strats, def_strats; DO=defenderoraclezhang, AO=attackeroraclezhang,
-        total_timeout=total_timeout_zh, A_timeout=A_timeout_zh, D_timeout=D_timeout_zh, printing=printing, silent_solvers=silent_solvers)
-    time_zh = results_zh.time
-    results_zh = results_zh.value
+    results = @timed EIGSzhang!(the_eig, att_strats, def_strats; DO=D_ORACLE_ID_TO_ORACLE[D_oracle_num], AO=A_ORACLE_ID_TO_ORACLE[A_oracle_num],
+        total_timeout=total_timeout, A_timeout=A_timeout, D_timeout=D_timeout, printing=printing, silent_solvers=silent_solvers)
+    time = results.time
+    results = results.value
+
+    
     
     # return data
     return (
-        time_zh=time_zh,
-        results_zh=results_zh,
-        time_ne=time_ne,
-        results_ne=results_ne
+        time=time,
+        results=results,
+        AO=string(A_ORACLE_ID_TO_ORACLE[A_oracle_num]),
+        DO=string(D_ORACLE_ID_TO_ORACLE[D_oracle_num])
     )
     
         # att_strats
@@ -3547,59 +3267,44 @@ function do_run_of_trial(grid_size, trial_num; total_timeout_zh=300, total_timeo
         # construction times
 end
 
-function do_run_of_trial_and_write_result(grid_size, trial_num; total_timeout_zh=300, total_timeout_ne=300, A_timeout_zh=30, A_timeout_ne=30, D_timeout_zh=30, D_timeout_ne=30, printing=0, silent_solvers=true, t_max_offset=0.75, use_orig_t_max=true)
-    results = do_run_of_trial(grid_size, trial_num;
-        total_timeout_zh=total_timeout_zh, total_timeout_ne=total_timeout_ne,
-        A_timeout_zh=A_timeout_zh, A_timeout_ne=A_timeout_ne,
-        D_timeout_zh=D_timeout_zh, D_timeout_ne=D_timeout_ne, printing=printing, silent_solvers=silent_solvers, t_max_offset=t_max_offset, use_orig_t_max=use_orig_t_max)
+
+function do_run_of_trial_and_write_result_custom(grid_size, trial_num; A_oracle_num=2, D_oracle_num=2, total_timeout=300, A_timeout=30, D_timeout=30, printing=0, silent_solvers=true, t_max_offset=0.75, use_orig_t_max=true)
+    @assert(A_oracle_num in [1, 2], "Attacker oracle num must be in [1, 2] (1 for Zhang, 2 for network)")
+    @assert(D_oracle_num in [1, 2], "Defender oracle num must be in [1, 2] (1 for Zhang, 2 for network)")
+    @assert(A_oracle_num == D_oracle_num, "Should be using same type oracle in final runs")
+    
+    results = do_run_of_trial_custom(grid_size, trial_num, A_oracle_num=A_oracle_num, D_oracle_num=D_oracle_num,
+        total_timeout=total_timeout, A_timeout=A_timeout, D_timeout=D_timeout,
+        printing=printing, silent_solvers=silent_solvers, t_max_offset=t_max_offset, use_orig_t_max=use_orig_t_max)
+
+    oracle_str = A_oracle_num == 1 ? "zhang" : "network"
     
     # write results to file
     if use_orig_t_max
-        file_string = "run_results/size" * string(grid_size) * "_trial" * string(trial_num) * "_origtmax.json"
+        # file_string = "run_results_JUST_NETWORK/size" * string(grid_size) * "_trial" * string(trial_num) * "_origtmax.json"
+        file_string = "run_results_final_" * oracle_str * "/size" * string(grid_size) * "_trial" * string(trial_num) * "_origtmax.json"
     else
-        file_string = "run_results/size" * string(grid_size) * "_trial" * string(trial_num) * "_tmaxoff" * string(Int(t_max_offset * 100)) * ".json"
+        # file_string = "run_results_JUST_NETWORK/size" * string(grid_size) * "_trial" * string(trial_num) * "_tmaxoff" * string(Int(t_max_offset * 100)) * ".json"
+        file_string = "run_results_final_" * oracle_str * "/size" * string(grid_size) * "_trial" * string(trial_num) * "_tmaxoff" * string(Int(t_max_offset * 100)) * ".json"
     end
     open(file_string, "w") do f
         JSON.print(f, results)
     end
 end
 
-# ### Main
-
-function run_all_trials_and_write_results(;total_timeout_zh=300, total_timeout_ne=300, grid_sizes=3:10, trial_nums=1:10, printing=0, silent_solvers=true, t_max_offset=0.75, use_orig_t_max=true)
-    """
-    Run all trials and write results into folder "run_results" as JSON files.
-    """
-    if !isdir("run_results")
-        mkdir("run_results")  # create folder if not already existing
-    end
-    
-    for grid_size in grid_sizes
-        for trial_num in trial_nums
-            results = do_run_of_trial_and_write_result(grid_size, trial_num,
-                total_timeout_zh=total_timeout_zh, total_timeout_ne=total_timeout_ne,
-                A_timeout_zh=nothing, A_timeout_ne=nothing,
-                D_timeout_zh=nothing, D_timeout_ne=nothing, printing=printing, silent_solvers=silent_solvers, t_max_offset=t_max_offset, use_orig_t_max=use_orig_t_max)
-        end
-    end
-end
-
-# T_MAX_OFFSETS_CS_LIST = [75, 1075, 2075, 3075]  # list of t_max offsets (centiseconds) used 
-
 # ## ------------------------------ MAIN ------------------------------ (run individual grid-trial pair)
-# usage: EIG_Notebook.jl <total_timeout for each oracle int> <t_max_offset int> <use_orig_t_max bool> <grid_size> <trial_num>
+# usage: EIG_Notebook.jl <total_timeout for each oracle int> <t_max_offset int> <use_orig_t_max bool> <grid_size> <trial_num> <A_oracle_num> <D_oracle_num>
+# if A_oracle_num = 1 then Zhang attacker oracle is used, if A_oracle_num = 2 then network attacker oracle is used
+# if D_oracle_num = 1 then Zhang defender oracle is used, if D_oracle_num = 2 then network defender oracle is used
 
 ULT_TIMEOUT = parse(Int, ARGS[1])
 T_MAX_OFFSET_INT = parse(Int, ARGS[2])
 USE_ORIG_T_MAX = parse(Bool, ARGS[3])
 GRID_SIZE = parse(Int, ARGS[4])
 TRIAL_NUM = parse(Int, ARGS[5])
+A_ORACLE_NUM = parse(Int, ARGS[6])
+D_ORACLE_NUM = parse(Int, ARGS[7])
 
-if !isdir("run_results")
-    mkdir("run_results")  # create folder if not already existing
-end
-
-do_run_of_trial_and_write_result(GRID_SIZE, TRIAL_NUM,
-                total_timeout_zh=ULT_TIMEOUT, total_timeout_ne=ULT_TIMEOUT,
-                A_timeout_zh=nothing, A_timeout_ne=nothing,
-                D_timeout_zh=nothing, D_timeout_ne=nothing, printing=false, silent_solvers=true, t_max_offset=T_MAX_OFFSET_INT + 0.75, use_orig_t_max=USE_ORIG_T_MAX)
+do_run_of_trial_and_write_result_custom(GRID_SIZE, TRIAL_NUM, A_oracle_num=A_ORACLE_NUM, D_oracle_num=D_ORACLE_NUM,
+                total_timeout=ULT_TIMEOUT, A_timeout=nothing, A_timeout=nothing,
+                printing=false, silent_solvers=true, t_max_offset=T_MAX_OFFSET_INT + 0.75, use_orig_t_max=USE_ORIG_T_MAX)

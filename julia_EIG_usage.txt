@@ -1,0 +1,52 @@
+# T_MAX_OFFSETS_CS_LIST = [75, 875, 1075, 1675, 2075, 3075]  # list of t_max offsets (centiseconds) used: OLD, now using seq(0 10 60)
+
+# ## ------------------------------ MAIN ------------------------------ (run individual grid-trial pair)
+# usage: EIG_Notebook.jl <total_timeout for each oracle int> <t_max_offset int> <use_orig_t_max bool> <grid_size> <trial_num> <A_oracle_num> <D_oracle_num>
+# if A_oracle_num = 1 then Zhang attacker oracle is used, if A_oracle_num = 2 then network attacker oracle is used
+# if D_oracle_num = 1 then Zhang defender oracle is used, if D_oracle_num = 2 then network defender oracle is used
+
+ULT_TIMEOUT = parse(Int, ARGS[1])
+T_MAX_OFFSET_INT = parse(Int, ARGS[2])
+USE_ORIG_T_MAX = parse(Bool, ARGS[3])
+GRID_SIZE = parse(Int, ARGS[4])
+TRIAL_NUM = parse(Int, ARGS[5])
+A_ORACLE_NUM = parse(Int, ARGS[6])
+D_ORACLE_NUM = parse(Int, ARGS[7])
+
+if !isdir("run_results")
+    mkdir("run_results")  # create folder if not already existing
+end
+
+do_run_of_trial_and_write_result_custom(GRID_SIZE, TRIAL_NUM, A_oracle_num=A_ORACLE_NUM, D_oracle_num=D_ORACLE_NUM,
+                total_timeout=ULT_TIMEOUT, A_timeout=nothing, A_timeout=nothing,
+                printing=false, silent_solvers=true, t_max_offset=T_MAX_OFFSET_INT + 0.75, use_orig_t_max=USE_ORIG_T_MAX)
+
+
+
+
+OLD********************************************************************************************************
+
+# T_MAX_OFFSETS_CS_LIST = [75, 1075, 2075, 3075]  # list of t_max offsets (centiseconds) used 
+
+# ## ------------------------------ MAIN ------------------------------ (run individual grid-trial pair)
+# usage: EIG_Notebook.jl <total_timeout for each oracle int> <t_max_offset int> <use_orig_t_max bool> <grid_size> <trial_num>
+
+ULT_TIMEOUT = parse(Int, ARGS[1])
+T_MAX_OFFSET_INT = parse(Int, ARGS[2])
+USE_ORIG_T_MAX = parse(Bool, ARGS[3])
+GRID_SIZE = parse(Int, ARGS[4])
+TRIAL_NUM = parse(Int, ARGS[5])
+
+if !isdir("run_results")
+    mkdir("run_results")  # create folder if not already existing
+end
+
+do_run_of_trial_and_write_result(GRID_SIZE, TRIAL_NUM,
+                total_timeout_zh=ULT_TIMEOUT, total_timeout_ne=ULT_TIMEOUT,
+                A_timeout_zh=nothing, A_timeout_ne=nothing,
+                D_timeout_zh=nothing, D_timeout_ne=nothing, printing=false, silent_solvers=true, t_max_offset=T_MAX_OFFSET_INT + 0.75, use_orig_t_max=USE_ORIG_T_MAX)
+
+
+
+
+
