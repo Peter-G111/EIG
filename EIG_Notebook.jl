@@ -1156,13 +1156,13 @@ function EIGSzhang!(eig::EIG, att_strats, def_strats; L_max=5, DO=defenderoracle
             # println("outside, the D_timeout is $D_timeout")
             if D_timeout === nothing
                 D_timeout_ = (start_time_ns + total_timeout_ns - time_ns()) / 1e9  # time given (secs) to defender oracle
-                println("the D_timeout_ is $D_timeout_ (set)")
-                flush(stdout)
+                # println("the D_timeout_ is $D_timeout_ (set)")
+                # flush(stdout)
 
                 if D_timeout_ <= 0
                     # timeout, break
-                    println("the D_timeout_ is negative, breaking")
-                    flush(stdout)
+                    # println("the D_timeout_ is negative, breaking")
+                    # flush(stdout)
                     convergence = false
                     break;
                 end
@@ -1246,13 +1246,13 @@ function EIGSzhang!(eig::EIG, att_strats, def_strats; L_max=5, DO=defenderoracle
             # println("outside, the A_timeout is $A_timeout")
             if isnothing(A_timeout)
                 A_timeout_ = (start_time_ns + total_timeout_ns - time_ns()) / 1e9  # time given (secs) to attacker oracle
-                println("the A_timeout_ is $A_timeout_ (set)")
-                flush(stdout)
+                # println("the A_timeout_ is $A_timeout_ (set)")
+                # flush(stdout)
                 
                 if A_timeout_ <= 0
                     # timeout, break
-                    println("the A_timeout_ is negative, breaking")
-                    flush(stdout)
+                    # println("the A_timeout_ is negative, breaking")
+                    # flush(stdout)
                     convergence = false
                     break;
                 end
@@ -3306,5 +3306,5 @@ A_ORACLE_NUM = parse(Int, ARGS[6])
 D_ORACLE_NUM = parse(Int, ARGS[7])
 
 do_run_of_trial_and_write_result_custom(GRID_SIZE, TRIAL_NUM, A_oracle_num=A_ORACLE_NUM, D_oracle_num=D_ORACLE_NUM,
-                total_timeout=ULT_TIMEOUT, A_timeout=nothing, A_timeout=nothing,
+                total_timeout=ULT_TIMEOUT, A_timeout=nothing, D_timeout=nothing,
                 printing=false, silent_solvers=true, t_max_offset=T_MAX_OFFSET_INT + 0.75, use_orig_t_max=USE_ORIG_T_MAX)
