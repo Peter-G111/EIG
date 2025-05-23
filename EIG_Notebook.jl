@@ -535,9 +535,8 @@ function makedefstrat_endnodes(eig)
     return makedefstrat_path(eig, end_nodes)
 end
 
-# #### Visualisation
+# # #### Visualisation
 
-# +
 # function drawEIGgraph(eig::EIG; arrow_size=0.03, arrow_os=0.2, width)
 #     my_plot = plot(;aspect_ratio=:equal)  # init plot with nothing
         
@@ -626,7 +625,7 @@ end
 #     display(my_plot)
 # end
 
-# +
+# # +
 # function animateEIGPure(eig::EIG, att_strat, def_strat; arrow_size=0.03, arrow_os=0.2, anim_time=3, fps=30, savefilename="EIG_GIF_EXAMPLE", width)
     
 #     num_frames = ceil(Int, anim_time * fps)
@@ -851,7 +850,7 @@ end
     
 #     # display(my_plot)
 # end
-# -
+# # -
 
 # #### Interdiction Check & CoreLP
 
@@ -1041,7 +1040,7 @@ end
 # #### Zhang et al. Double Oracle
 
 function EIGSzhang!(eig::EIG, att_strats, def_strats; L_max=5, DO=defenderoraclezhang, AO=attackeroraclezhang, max_iters=Inf, printing=1,
-        total_timeout=300, A_timeout=60.0, D_timeout=60.0, silent_solvers=false)
+        total_timeout=300, A_timeout=60.0, D_timeout=60.0, silent_solvers=false, abstol=1e-6)
     """ TODO: bounds given by oracles - actually, just giving the data of the oracle objectives every run is enough (we can compute bounds easily from this data)
     Implements algorithm 1 in the Zhang paper (the main double oracle).
     Given initial attacker and defender strategies, generates new pure strategies until no improving strategies are found
@@ -1058,6 +1057,7 @@ function EIGSzhang!(eig::EIG, att_strats, def_strats; L_max=5, DO=defenderoracle
         1 is some printing (only initiating LPs, and whether improving strategies are found or not each iteration)
         2 is full printing
     silent_solvers: Bool for if the LP solvers should be silent or not
+    abstol: Absolute tolerance for an objective to be considered a strict improvement
     """
     convergence = false;
     
@@ -1154,15 +1154,15 @@ function EIGSzhang!(eig::EIG, att_strats, def_strats; L_max=5, DO=defenderoracle
             
             # compute timeout time (secs)
             # println("outside, the D_timeout is $D_timeout")
-            if D_timeout === nothing
+            if isnothing(D_timeout)
                 D_timeout_ = (start_time_ns + total_timeout_ns - time_ns()) / 1e9  # time given (secs) to defender oracle
-                # println("the D_timeout_ is $D_timeout_ (set)")
-                # flush(stdout)
+                println("the D_timeout_ is $D_timeout_ (set)")
+                flush(stdout)
 
                 if D_timeout_ <= 0
                     # timeout, break
-                    # println("the D_timeout_ is negative, breaking")
-                    # flush(stdout)
+                    println("the D_timeout_ is negative, breaking")
+                    flush(stdout)
                     convergence = false
                     break;
                 end
@@ -1198,21 +1198,26 @@ function EIGSzhang!(eig::EIG, att_strats, def_strats; L_max=5, DO=defenderoracle
                 # oracle didn't find a feasible point
                 convergence = false
                 if printing ≥ 1; println("\n!!! NO FEASIBLE DEFENDER STRATEGY FOUND (DO TIMEOUT of $D_timeout_ )"); end
-            elseif obj_DO !== nothing && obj_DO > obj_core
-                # defender oracle found an improving strategy
-                push!(def_strats, new_def_strat)
-                push!(def_probs, 0)  # play this strategy with 0 probability - for the attacker oracle in this iteration
-                
-                # update intdict_mtx (new column for defender)
-                new_col = [doesinterdict(a, new_def_strat) for a in att_strats]
-                intdict_mtx = [intdict_mtx;; new_col]  # concat new col
-                
-                convergence = false
-                if printing ≥ 2
-                    println("\n!!! NEW DEFENDER STRAT:")
-                    display(def_strats[end])
-                    println("\n def_probs (before running coreLP)")
-                    display(def_probs)
+            elseif !isnothing(obj_DO)
+                if obj_DO > obj_core + abstol
+                    # defender oracle found an improving strategy
+                    push!(def_strats, new_def_strat)
+                    push!(def_probs, 0)  # play this strategy with 0 probability - for the attacker oracle in this iteration
+                    
+                    # update intdict_mtx (new column for defender)
+                    new_col = [doesinterdict(a, new_def_strat) for a in att_strats]
+                    intdict_mtx = [intdict_mtx;; new_col]  # concat new col
+                    
+                    convergence = false
+                    if printing ≥ 2
+                        println("\n!!! NEW DEFENDER STRAT:")
+                        display(def_strats[end])
+                        println("\n def_probs (before running coreLP)")
+                        display(def_probs)
+                    end
+                else
+                    # objective found, but not within tolerance; leave convergence as true
+                    if printing ≥ 1; println("\n!!! NO SUFFICIENTLY (abstol=$abstol) IMPROVING DEFENDER STRATEGY FOUND"); end
                 end
             elseif termination_status(LP_DO) != OPTIMAL
                 convergence = false
@@ -1225,7 +1230,6 @@ function EIGSzhang!(eig::EIG, att_strats, def_strats; L_max=5, DO=defenderoracle
                 # end
             end
         end
-        
         
         if obj_core == 0
             # probability of interdiction is 0, so no improving attacker strategy exists
@@ -1246,13 +1250,13 @@ function EIGSzhang!(eig::EIG, att_strats, def_strats; L_max=5, DO=defenderoracle
             # println("outside, the A_timeout is $A_timeout")
             if isnothing(A_timeout)
                 A_timeout_ = (start_time_ns + total_timeout_ns - time_ns()) / 1e9  # time given (secs) to attacker oracle
-                # println("the A_timeout_ is $A_timeout_ (set)")
-                # flush(stdout)
+                println("the A_timeout_ is $A_timeout_ (set)")
+                flush(stdout)
                 
                 if A_timeout_ <= 0
                     # timeout, break
-                    # println("the A_timeout_ is negative, breaking")
-                    # flush(stdout)
+                    println("the A_timeout_ is negative, breaking")
+                    flush(stdout)
                     convergence = false
                     break;
                 end
@@ -1281,24 +1285,29 @@ function EIGSzhang!(eig::EIG, att_strats, def_strats; L_max=5, DO=defenderoracle
                 # oracle didn't find a feasible point
                 convergence = false
                 if printing ≥ 1; println("\n!!! NO FEASIBLE ATTACKER STRATEGY FOUND (AO TIMEOUT of $A_timeout_ )"); end
-            elseif obj_AO !== nothing && obj_AO < obj_core
-                # attacker oracle found an improving strategy
-                push!(att_strats, new_att_strat)
-                convergence = false
-                
-                # update intdict_mtx (new row for attacker)
-                new_row = [doesinterdict(new_att_strat, d) for d in def_strats]
-                intdict_mtx = [intdict_mtx; transpose(new_row)]  # concat new row
-                
-                if printing ≥ 2
-                    println("\n!!! NEW ATTACKER STRAT:")
-                    display(att_strats[end])
-                    println("\n att_probs (before running coreLP):")
-                    display(att_probs)
+            elseif !isnothing(obj_AO)
+                if obj_AO < obj_core - abstol
+                    # attacker oracle found an improving strategy
+                    push!(att_strats, new_att_strat)
+                    convergence = false
+                    
+                    # update intdict_mtx (new row for attacker)
+                    new_row = [doesinterdict(new_att_strat, d) for d in def_strats]
+                    intdict_mtx = [intdict_mtx; transpose(new_row)]  # concat new row
+                    
+                    if printing ≥ 2
+                        println("\n!!! NEW ATTACKER STRAT:")
+                        display(att_strats[end])
+                        println("\n att_probs (before running coreLP):")
+                        display(att_probs)
+                    end
+                else
+                    # found objective value, but not within tolerance; leave convergence as true
+                    if printing ≥ 1; println("\n!!! NO SUFFICIENTLY (abstol=$abstol) IMPROVING ATTACKER STRATEGY FOUND"); end
                 end
             elseif termination_status(LP_AO) != OPTIMAL
                 convergence = false
-                if printing ≥ 1; println("\n!!! NO IMPROVING DEFENDER STRATEGY FOUND (AO TIMEOUT of $A_timeout_ )"); end
+                if printing ≥ 1; println("\n!!! NO IMPROVING ATTACKER STRATEGY FOUND (AO TIMEOUT of $A_timeout_ )"); end
             else
                 if printing ≥ 1; println("\n!!! NO IMPROVING ATTACKER STRATEGY FOUND; obj_AO = $obj_AO"); end
             end
@@ -3176,7 +3185,8 @@ function getEIGfromfile(filepath; use_orig_t_max=true, t_max_offset=0.75, force_
     # T_MAX = maximum(filter(!isinf, dist_mtx)) + 0.75
 
     if use_orig_t_max
-        T_MAX = T_MAX + 0.75  # so that our half-int strategies and ϵ in big-M constraints work
+        T_MAX = T_MAX - 0.25  # so that our half-int strategies and ϵ in big-M constraints work
+        @assert(dist_mtx[v_0, v_∞] / speed_A <= T_MAX)
     else
         # compute according to t_max_offset (quickest time for attacker to get to v_∞, then add t_max_offset)
         T_MAX = dist_mtx[v_0, v_∞] / speed_A + t_max_offset
@@ -3197,7 +3207,7 @@ end
 
 # ### Do run of a trial
 
-function do_run_of_trial_custom(grid_size, trial_num; A_oracle_num=2, D_oracle_num=2, total_timeout=300, A_timeout=30, D_timeout=30, printing=0, silent_solvers=true, t_max_offset=0.75, use_orig_t_max=true)
+function do_run_of_trial_custom(grid_size, trial_num; A_oracle_num=2, D_oracle_num=2, total_timeout=300, A_timeout=30, D_timeout=30, printing=0, silent_solvers=true, t_max_offset=0.75, use_orig_t_max=true, abstol=1e-6)
     """
     Do a run on a specified example given by grid_size and trial_num with specified oracles.
     
@@ -3239,18 +3249,32 @@ function do_run_of_trial_custom(grid_size, trial_num; A_oracle_num=2, D_oracle_n
     flush(stdout)
     
     results = @timed EIGSzhang!(the_eig, att_strats, def_strats; DO=D_ORACLE_ID_TO_ORACLE[D_oracle_num], AO=A_ORACLE_ID_TO_ORACLE[A_oracle_num],
-        total_timeout=total_timeout, A_timeout=A_timeout, D_timeout=D_timeout, printing=printing, silent_solvers=silent_solvers)
+        total_timeout=total_timeout, A_timeout=A_timeout, D_timeout=D_timeout, printing=printing, silent_solvers=silent_solvers, abstol=abstol)
     time = results.time
     results = results.value
 
-    
+    t_max_info = (
+        use_orig_t_max=use_orig_t_max,
+        t_max_scaled_and_offset=the_eig.t_max,
+        t_max_orig=CSV.File(filepath * "Time_Limits.csv", header=["col1"])[1].col1
+        # t_max_offset = use_orig_t_max ? -0.25 : t_max_offset
+    )
+
+    speed_info = (
+        speed_A=the_eig.speed_A,
+        speed_D=the_eig.speed_D
+    )
     
     # return data
     return (
         time=time,
         results=results,
         AO=string(A_ORACLE_ID_TO_ORACLE[A_oracle_num]),
-        DO=string(D_ORACLE_ID_TO_ORACLE[D_oracle_num])
+        DO=string(D_ORACLE_ID_TO_ORACLE[D_oracle_num]),
+        total_timeout=total_timeout,
+        abstol=abstol,
+        t_max_info=t_max_info,
+        speed_info=speed_info
     )
     
         # att_strats
@@ -3267,44 +3291,184 @@ function do_run_of_trial_custom(grid_size, trial_num; A_oracle_num=2, D_oracle_n
         # construction times
 end
 
+# +
+# function do_run_of_trial(grid_size, trial_num; total_timeout_zh=300, total_timeout_ne=300, A_timeout_zh=30, A_timeout_ne=30, D_timeout_zh=30, D_timeout_ne=30, printing=0, silent_solvers=true, t_max_offset=0.75, use_orig_t_max=true)
+#     """
+#     Do a run (both Zhang and network oracles) on a specified example given by grid_size and trial_num
+    
+#     grid_size: Int in [3, 10]
+#     trial_num: Int in [1, 10]
+#     """
+#     @assert(3 <= grid_size <= 10, "Invalid grid_size")
+#     @assert(1 <= trial_num <= 10, "Invalid trial_num")
 
-function do_run_of_trial_and_write_result_custom(grid_size, trial_num; A_oracle_num=2, D_oracle_num=2, total_timeout=300, A_timeout=30, D_timeout=30, printing=0, silent_solvers=true, t_max_offset=0.75, use_orig_t_max=true)
+#     results_and_time_zh = do_run_of_trial_custom(grid_size, trial_num, A_oracle_num=1, D_oracle_num=1,
+#         total_timeout=total_timeout_zh, A_timeout=A_timeout_zh, D_timeout=D_timeout_zh,
+#         printing=printing, silent_solvers=silent_solvers, t_max_offset=t_max_offset, use_orig_t_max=use_orig_t_max)
+    
+#     results_and_time_ne = do_run_of_trial_custom(grid_size, trial_num, A_oracle_num=2, D_oracle_num=2,
+#         total_timeout=total_timeout_ne, A_timeout=A_timeout_ne, D_timeout=D_timeout_ne,
+#         printing=printing, silent_solvers=silent_solvers, t_max_offset=t_max_offset, use_orig_t_max=use_orig_t_max)
+
+#     return (
+#         time_zh=results_and_time_zh.time,
+#         results_zh=results_and_time_zh.results,
+#         time_ne=results_and_time_ne.time,
+#         results_ne=results_and_time_ne.results
+#     )
+    
+#     # println("\n!!!!!!!! STARTING grid_size=$grid_size and trial_num=$trial_num")
+#     # flush(stdout)
+    
+#     # filepath = converttrial2filepath(grid_size, trial_num)
+#     # the_eig = getEIGfromfile(filepath, t_max_offset=t_max_offset, use_orig_t_max=use_orig_t_max)
+    
+#     # # the_eig.t_max = the_eig.dist_mtx[the_eig.network.v_0, the_eig.network.v_∞] + 0.75
+    
+#     # # compute simple heuristic strategies (shortest path for attacker, stay at stations for defender)
+#     # att_heu_strat = makeheuristicattacker(the_eig)
+#     # def_heu_strat = makedefstrat_endnodes(the_eig)
+
+#     # # network oracles; reset att_strats and def_strats
+#     # att_strats = [att_strat_to_A_half_strat(the_eig.dist_mtx, att_heu_strat, the_eig.speed_A)]
+#     # def_strats = [def_heu_strat]
+    
+#     # println("!!!!!! STARTING NETWORK DOUBLE ORACLE")
+#     # flush(stdout)
+    
+#     # results_ne = @timed EIGSzhang!(the_eig, att_strats, def_strats; DO=defenderoraclenew, AO=attackeroraclenew,
+#     #     total_timeout=total_timeout_ne, A_timeout=A_timeout_ne, D_timeout=D_timeout_ne, printing=printing, silent_solvers=silent_solvers)
+#     # time_ne = results_ne.time
+#     # results_ne = results_ne.value
+
+#     # # Zhang oracles
+#     # att_strats = [att_heu_strat]
+#     # def_strats = [def_heu_strat]
+    
+#     # println("!!!!!! STARTING ZHANG DOUBLE ORACLE")
+#     # flush(stdout)
+    
+#     # results_zh = @timed EIGSzhang!(the_eig, att_strats, def_strats; DO=defenderoraclezhang, AO=attackeroraclezhang,
+#     #     total_timeout=total_timeout_zh, A_timeout=A_timeout_zh, D_timeout=D_timeout_zh, printing=printing, silent_solvers=silent_solvers)
+#     # time_zh = results_zh.time
+#     # results_zh = results_zh.value
+    
+#     # # return data
+#     # return (
+#     #     time_zh=time_zh,
+#     #     results_zh=results_zh,
+#     #     time_ne=time_ne,
+#     #     results_ne=results_ne
+#     # )
+    
+#         # att_strats
+#         # att_probs
+#         # def_strats
+#         # def_probs
+#         # obj_core_over_time
+#         # obj_DO_over_time
+#         # obj_AO_over_time
+#         # coreLP_time_over_time
+#         # DO_time_over_time
+#         # AO_time_over_time
+#         # convergence_flag
+#         # construction times
+# end
+
+# +
+# function do_run_of_trial_and_write_result(grid_size, trial_num; total_timeout_zh=300, total_timeout_ne=300, A_timeout_zh=30, A_timeout_ne=30, D_timeout_zh=30, D_timeout_ne=30, printing=0, silent_solvers=true, t_max_offset=0.75, use_orig_t_max=true)
+#     results = do_run_of_trial(grid_size, trial_num;
+#         total_timeout_zh=total_timeout_zh, total_timeout_ne=total_timeout_ne,
+#         A_timeout_zh=A_timeout_zh, A_timeout_ne=A_timeout_ne,
+#         D_timeout_zh=D_timeout_zh, D_timeout_ne=D_timeout_ne, printing=printing, silent_solvers=silent_solvers, t_max_offset=t_max_offset, use_orig_t_max=use_orig_t_max)
+    
+#     # write results to file
+#     if use_orig_t_max
+#         file_string = "run_results/size" * string(grid_size) * "_trial" * string(trial_num) * "_origtmax.json"
+#     else
+#         file_string = "run_results/size" * string(grid_size) * "_trial" * string(trial_num) * "_tmaxoff" * string(Int(t_max_offset * 100)) * ".json"
+#     end
+#     open(file_string, "w") do f
+#         JSON.print(f, results)
+#     end
+# end
+# -
+
+function do_run_of_trial_and_write_result_custom(grid_size, trial_num; A_oracle_num=2, D_oracle_num=2, total_timeout=300, A_timeout=30, D_timeout=30, printing=0, silent_solvers=true, t_max_offset=0.75, use_orig_t_max=true, dirname="run_results", abstol=1e-6)
     @assert(A_oracle_num in [1, 2], "Attacker oracle num must be in [1, 2] (1 for Zhang, 2 for network)")
     @assert(D_oracle_num in [1, 2], "Defender oracle num must be in [1, 2] (1 for Zhang, 2 for network)")
     @assert(A_oracle_num == D_oracle_num, "Should be using same type oracle in final runs")
     
     results = do_run_of_trial_custom(grid_size, trial_num, A_oracle_num=A_oracle_num, D_oracle_num=D_oracle_num,
         total_timeout=total_timeout, A_timeout=A_timeout, D_timeout=D_timeout,
-        printing=printing, silent_solvers=silent_solvers, t_max_offset=t_max_offset, use_orig_t_max=use_orig_t_max)
+        printing=printing, silent_solvers=silent_solvers, t_max_offset=t_max_offset, use_orig_t_max=use_orig_t_max, abstol=abstol)
+    
+    A_ORACLE_ID_TO_ORACLE = [attackeroraclezhang, attackeroraclenew]
+    D_ORACLE_ID_TO_ORACLE = [defenderoraclezhang, defenderoraclenew]
 
     oracle_str = A_oracle_num == 1 ? "zhang" : "network"
     
     # write results to file
     if use_orig_t_max
         # file_string = "run_results_JUST_NETWORK/size" * string(grid_size) * "_trial" * string(trial_num) * "_origtmax.json"
-        file_string = "run_results_final_" * oracle_str * "/size" * string(grid_size) * "_trial" * string(trial_num) * "_origtmax.json"
+        file_string = dirname * "_" * oracle_str * "/size" * string(grid_size) * "_trial" * string(trial_num) * "_origtmax.json"
     else
         # file_string = "run_results_JUST_NETWORK/size" * string(grid_size) * "_trial" * string(trial_num) * "_tmaxoff" * string(Int(t_max_offset * 100)) * ".json"
-        file_string = "run_results_final_" * oracle_str * "/size" * string(grid_size) * "_trial" * string(trial_num) * "_tmaxoff" * string(Int(t_max_offset * 100)) * ".json"
+        file_string = dirname * "_" * oracle_str * "/size" * string(grid_size) * "_trial" * string(trial_num) * "_tmaxoff" * string(Int(t_max_offset * 100)) * ".json"
+    end
+
+    if !isdir(dirname * "_" * oracle_str)
+        mkdir(dirname * "_" * oracle_str)
     end
     open(file_string, "w") do f
         JSON.print(f, results)
     end
 end
 
-# ## ------------------------------ MAIN ------------------------------ (run individual grid-trial pair)
-# usage: EIG_Notebook.jl <total_timeout for each oracle int> <t_max_offset int> <use_orig_t_max bool> <grid_size> <trial_num> <A_oracle_num> <D_oracle_num>
-# if A_oracle_num = 1 then Zhang attacker oracle is used, if A_oracle_num = 2 then network attacker oracle is used
-# if D_oracle_num = 1 then Zhang defender oracle is used, if D_oracle_num = 2 then network defender oracle is used
+# T_MAX_OFFSETS_CS_LIST = [75, 875, 1075, 1675, 2075, 3075]  # list of t_max offsets (centiseconds) used: OLD, now using seq(0 10 60)
 
-ULT_TIMEOUT = parse(Int, ARGS[1])
-T_MAX_OFFSET_INT = parse(Int, ARGS[2])
-USE_ORIG_T_MAX = parse(Bool, ARGS[3])
-GRID_SIZE = parse(Int, ARGS[4])
-TRIAL_NUM = parse(Int, ARGS[5])
-A_ORACLE_NUM = parse(Int, ARGS[6])
-D_ORACLE_NUM = parse(Int, ARGS[7])
+dirname = "run_results_final4"  # hardcoded
 
-do_run_of_trial_and_write_result_custom(GRID_SIZE, TRIAL_NUM, A_oracle_num=A_ORACLE_NUM, D_oracle_num=D_ORACLE_NUM,
-                total_timeout=ULT_TIMEOUT, A_timeout=nothing, D_timeout=nothing,
-                printing=false, silent_solvers=true, t_max_offset=T_MAX_OFFSET_INT + 0.75, use_orig_t_max=USE_ORIG_T_MAX)
+# to get compilation
+do_run_of_trial_and_write_result_custom(10, 8, A_oracle_num=2, D_oracle_num=2,
+        total_timeout=3600, A_timeout=nothing, D_timeout=nothing,
+        printing=false, silent_solvers=true,
+        t_max_offset=0 + 0.75, use_orig_t_max=true, dirname=dirname, abstol=1e-7)
+
+for GRID_SIZE in 3:10
+    for TRIAL_NUM in 1:10
+        do_run_of_trial_and_write_result_custom(GRID_SIZE, TRIAL_NUM, A_oracle_num=2, D_oracle_num=2,
+                total_timeout=3600, A_timeout=nothing, D_timeout=nothing,
+                printing=false, silent_solvers=true,
+                t_max_offset=0 + 0.75, use_orig_t_max=true, dirname=dirname, abstol=1e-7)
+    end
+end
+
+# do_run_of_trial_and_write_result_custom(7, 7, A_oracle_num=2, D_oracle_num=2,
+#         total_timeout=3600*24*4, A_timeout=nothing, D_timeout=nothing,
+#         printing=false, silent_solvers=true,
+#         t_max_offset=0 + 0.75, use_orig_t_max=true, dirname="run_results_long_custom", abstol=1e-5)
+
+# do_run_of_trial_and_write_result_custom(3, 1, A_oracle_num=2, D_oracle_num=2,
+#         total_timeout=3600, A_timeout=nothing, D_timeout=nothing,
+#         printing=false, silent_solvers=true,
+#         t_max_offset=0 + 0.75, use_orig_t_max=true, dirname=dirname, abstol=1e-7)
+
+# # ## ------------------------------ MAIN ------------------------------ (run individual grid-trial pair)
+# # usage: EIG_Notebook.jl <total_timeout for each oracle int> <t_max_offset int> <use_orig_t_max bool> <grid_size> <trial_num> <A_oracle_num> <D_oracle_num>
+# # if A_oracle_num = 1 then Zhang attacker oracle is used, if A_oracle_num = 2 then network attacker oracle is used
+# # if D_oracle_num = 1 then Zhang defender oracle is used, if D_oracle_num = 2 then network defender oracle is used
+
+# ULT_TIMEOUT = parse(Int, ARGS[1])
+# T_MAX_OFFSET_INT = parse(Int, ARGS[2])
+# USE_ORIG_T_MAX = parse(Bool, ARGS[3])
+# GRID_SIZE = parse(Int, ARGS[4])
+# TRIAL_NUM = parse(Int, ARGS[5])
+# A_ORACLE_NUM = parse(Int, ARGS[6])
+# D_ORACLE_NUM = parse(Int, ARGS[7])
+
+
+# do_run_of_trial_and_write_result_custom(GRID_SIZE, TRIAL_NUM, A_oracle_num=A_ORACLE_NUM, D_oracle_num=D_ORACLE_NUM,
+#                 total_timeout=ULT_TIMEOUT, A_timeout=nothing, D_timeout=nothing,
+#                 printing=false, silent_solvers=true,
+#                 t_max_offset=T_MAX_OFFSET_INT + 0.75, use_orig_t_max=USE_ORIG_T_MAX, dirname=dirname, abstol=1e-7)

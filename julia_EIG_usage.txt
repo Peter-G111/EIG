@@ -13,13 +13,12 @@ TRIAL_NUM = parse(Int, ARGS[5])
 A_ORACLE_NUM = parse(Int, ARGS[6])
 D_ORACLE_NUM = parse(Int, ARGS[7])
 
-if !isdir("run_results")
-    mkdir("run_results")  # create folder if not already existing
-end
-
 do_run_of_trial_and_write_result_custom(GRID_SIZE, TRIAL_NUM, A_oracle_num=A_ORACLE_NUM, D_oracle_num=D_ORACLE_NUM,
-                total_timeout=ULT_TIMEOUT, A_timeout=nothing, A_timeout=nothing,
-                printing=false, silent_solvers=true, t_max_offset=T_MAX_OFFSET_INT + 0.75, use_orig_t_max=USE_ORIG_T_MAX)
+                total_timeout=ULT_TIMEOUT, A_timeout=nothing, D_timeout=nothing,
+                printing=false, silent_solvers=true, t_max_offset=T_MAX_OFFSET_INT + 0.75, use_orig_t_max=USE_ORIG_T_MAX, dirname="run_results_final2", abstol=1e-7)
+
+
+
 
 
 
